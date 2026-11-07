@@ -8,7 +8,7 @@ import Overview from './components/Overview.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import TaskDialog from './components/TaskDialog.jsx';
 import TaskTable from './components/TaskTable.jsx';
-import { isFinished, isOverdue, toDateInput } from './utils.js';
+import { isFinished, isOverdue, TEAM, toDateInput } from './utils.js';
 
 const STATUS_OPTIONS = [['all', 'All statuses'], ['open', 'Not done'], ['todo', 'To do'], ['doing', 'In progress'], ['done', 'Done'], ['merged', 'Merged'], ['closed', 'Closed']];
 
@@ -131,7 +131,7 @@ export default function App() {
     });
   }, [tasks, allDays, date, workstream, owner, statusFilter, search, sortKey, sortDir]);
 
-  async function saveTask(values) {
+  async function saveTask(values, { subtasks: extraSubtasks = [], keepOpen = false } = {}) {
     if (!canWrite) return;
     setSaving(true);
     try {
@@ -141,10 +141,13 @@ export default function App() {
         await collectionApi('tasks').update(selectedTask.id, changes);
       } else {
         const now = Date.now();
-        await collectionApi('tasks').create({ ...values, createdAt: now, doneAt: isFinished(values.status) ? now : null });
+        const created = await collectionApi('tasks').create({ ...values, createdAt: now, doneAt: isFinished(values.status) ? now : null });
+        for (const title of extraSubtasks) {
+          await collectionApi('subtasks').create({ parent: created.id, title, done: false, owner: '', createdAt: Date.now() });
+        }
       }
       await refresh();
-      setSelectedTask(null);
+      if (!keepOpen) setSelectedTask(null);
       setNotice('');
     } finally {
       setSaving(false);
@@ -159,12 +162,12 @@ export default function App() {
     await refresh();
   }
 
-  async function deleteTask() {
-    if (!selectedTask?.id || !window.confirm('Delete this task and all its subtasks?')) return;
+  async function deleteTask(task = selectedTask) {
+    if (!task?.id || !window.confirm(`Delete "${task.title}" and all its subtasks?`)) return;
     try {
-      await collectionApi('tasks').remove(selectedTask.id);
+      await collectionApi('tasks').remove(task.id);
       await refresh();
-      setSelectedTask(null);
+      if (selectedTask?.id === task.id) setSelectedTask(null);
     } catch (error) {
       setNotice(error.message);
     }
@@ -211,6 +214,20 @@ export default function App() {
     } catch (error) {
       setNotice(error.message);
     }
+  }
+
+  const unfinishedElsewhere = useMemo(() => tasks.filter((task) => task.day !== date && !isFinished(task.status)), [tasks, date]);
+
+  async function bringUnfinished() {
+    const count = unfinishedElsewhere.length;
+    if (!canWrite || !count || !window.confirm(`Move ${count} unfinished ${count === 1 ? 'task' : 'tasks'} to ${date}?`)) return;
+    try {
+      await Promise.all(unfinishedElsewhere.map((task) => collectionApi('tasks').update(task.id, { day: date, updatedAt: Date.now() })));
+      setAllDays(false);
+    } catch (error) {
+      setNotice(error.message);
+    }
+    await refresh();
   }
 
   function sortTasks(key) {
@@ -291,6 +308,7 @@ export default function App() {
       workstream={workstream}
     />
   );
+  const people = useMemo(() => [...new Set([...TEAM, ...tasks.map((task) => task.owner).filter(Boolean)])], [tasks]);
   const dayCount = new Set(tasks.map((task) => task.day).filter(Boolean)).size;
 
   return (
@@ -321,6 +339,7 @@ export default function App() {
               ))}
             </div>
             <div className="ml-auto flex flex-wrap items-center gap-3 pb-2">
+              {canWrite && !allDays && unfinishedElsewhere.length > 0 && <button className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-[#343b47] dark:bg-[#14171c] dark:text-slate-200 dark:hover:bg-[#1b2028]" onClick={bringUnfinished} type="button">Bring {unfinishedElsewhere.length} unfinished here</button>}
               <label className="relative">
                 <Icon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" name="search" />
                 <input aria-label="Search tasks" className="h-10 w-64 rounded-lg border border-slate-200 bg-white pl-10 pr-9 text-sm text-slate-800 placeholder:text-slate-400 dark:border-[#343b47] dark:bg-[#14171c] dark:text-slate-100 sm:w-80" onChange={(event) => setSearch(event.target.value)} placeholder="Search tasks, owners, notes" value={search} />
@@ -340,7 +359,7 @@ export default function App() {
           )}
           <Overview tasks={visibleTasks} />
           {view === 'list'
-            ? <TaskTable canWrite={canWrite} onCreate={() => setSelectedTask({ status: 'todo' })} onOpen={setSelectedTask} onSort={sortTasks} onStatus={changeStatus} sortDir={sortDir} sortKey={sortKey} subtasks={subtasks} tasks={visibleTasks} />
+            ? <TaskTable canWrite={canWrite} onDelete={deleteTask} onPatch={patchTask} showDate={allDays} onCreate={() => setSelectedTask({ status: 'todo' })} onOpen={setSelectedTask} onSort={sortTasks} onStatus={changeStatus} sortDir={sortDir} sortKey={sortKey} subtasks={subtasks} tasks={visibleTasks} />
             : <KanbanBoard canWrite={canWrite} onCreate={(status) => setSelectedTask({ status })} onOpen={setSelectedTask} onStatus={(taskOrId, status) => {
               const task = typeof taskOrId === 'string' ? tasks.find((item) => item.id === taskOrId) : taskOrId;
               if (task) changeStatus(task, status);
@@ -355,6 +374,7 @@ export default function App() {
       {notificationsOpen && <div className="fixed right-5 top-[62px] z-30 lg:right-8"><Notifications canWrite={canWrite} onClose={() => setNotificationsOpen(false)} onOpen={(task) => { setSelectedTask(task); setNotificationsOpen(false); }} onPatch={patchTask} tasks={overdue} /></div>}
       {selectedTask && <TaskDialog
         canWrite={canWrite}
+        people={people}
         onAddSubtask={addSubtask}
         onClose={() => setSelectedTask(null)}
         onDelete={deleteTask}

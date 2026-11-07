@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import { PRIORITIES, STATUSES, toDateInput, WORKSTREAMS } from '../utils.js';
 
@@ -7,10 +7,26 @@ const blankTask = (status = 'todo') => ({
   status, day: toDateInput(), due: '', note: '',
 });
 
-export default function TaskDialog({ task, subtasks, canWrite, onClose, onSave, onDelete, onAddSubtask, onUpdateSubtask, onDeleteSubtask, saving }) {
+const control = 'h-11 w-full max-w-md rounded-lg border border-slate-200 bg-transparent px-4 text-base text-slate-800 placeholder:text-slate-400 dark:border-[#343b47] dark:text-slate-100';
+const pill = (active) => `rounded-lg border px-4 py-2.5 text-base font-medium transition ${active ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950' : 'border-slate-200 text-slate-800 hover:bg-slate-50 dark:border-[#343b47] dark:text-slate-200 dark:hover:bg-[#1b2028]'}`;
+const priorityLabel = (value) => (value === 'med' ? 'Medium' : value[0].toUpperCase() + value.slice(1));
+
+function Row({ label, children, hint }) {
+  return (
+    <div className="grid items-center gap-2 border-t border-slate-200 py-4 dark:border-[#242a33] sm:grid-cols-[236px_minmax(0,1fr)]">
+      <span className="text-base font-medium text-slate-500 dark:text-slate-400">{label}</span>
+      <div className="min-w-0">{children}{hint}</div>
+    </div>
+  );
+}
+
+export default function TaskDialog({ task, subtasks, people = [], canWrite, onClose, onSave, onDelete, onAddSubtask, onUpdateSubtask, onDeleteSubtask, saving }) {
   const [form, setForm] = useState(() => task ? { ...blankTask(), ...task } : blankTask());
+  const [pending, setPending] = useState([]);
   const [newSubtask, setNewSubtask] = useState('');
+  const [createAnother, setCreateAnother] = useState(false);
   const [error, setError] = useState('');
+  const titleRef = useRef(null);
   const isNew = !task?.id;
 
   useEffect(() => {
@@ -31,8 +47,10 @@ export default function TaskDialog({ task, subtasks, canWrite, onClose, onSave, 
 
   async function submit(event) {
     event.preventDefault();
+    if (!form.title.trim()) return;
     setError('');
     try {
+      const keepOpen = isNew && createAnother;
       await onSave({
         title: form.title.trim(),
         ws: form.ws,
@@ -43,7 +61,13 @@ export default function TaskDialog({ task, subtasks, canWrite, onClose, onSave, 
         day: form.day,
         due: form.due,
         note: form.note.trim(),
-      });
+      }, { subtasks: pending, keepOpen });
+      if (keepOpen) {
+        setForm((current) => ({ ...blankTask(current.status), ws: current.ws, day: current.day, owner: current.owner, watcher: current.watcher }));
+        setPending([]);
+        setNewSubtask('');
+        titleRef.current?.focus();
+      }
     } catch (saveError) {
       setError(saveError.message);
     }
@@ -53,6 +77,11 @@ export default function TaskDialog({ task, subtasks, canWrite, onClose, onSave, 
     event.preventDefault();
     const title = newSubtask.trim();
     if (!title) return;
+    if (isNew) {
+      setPending((current) => [...current, title]);
+      setNewSubtask('');
+      return;
+    }
     try {
       await onAddSubtask(title);
       setNewSubtask('');
@@ -61,54 +90,82 @@ export default function TaskDialog({ task, subtasks, canWrite, onClose, onSave, 
     }
   }
 
+  const ready = Boolean(form.title.trim());
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <form aria-labelledby="task-dialog-title" aria-modal="true" className="my-auto flex max-h-[min(90vh,850px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-[#343b47] dark:bg-[#14171c]" id="task-form" onSubmit={submit} role="dialog">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-[#242a33]">
-          <div><p className="text-xs text-slate-400">{isNew ? 'Optima Close-out / New task' : `Task ${String(task.n || '').padStart(3, '0')}`}</p><h2 className="mt-1 font-semibold text-slate-900 dark:text-white" id="task-dialog-title">{isNew ? 'Create task' : 'Task details'}</h2></div>
-          <button aria-label="Close dialog" className="grid size-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-[#242a33]" onClick={onClose} type="button"><Icon name="close" /></button>
-        </div>
-        <div className="grid gap-5 overflow-y-auto p-5">
-          <label className="block text-xs font-medium text-slate-500">Task name
-            <input autoFocus className="mt-2 w-full border-0 border-b border-slate-200 bg-transparent px-0 py-2 text-xl font-semibold text-slate-950 placeholder:text-slate-300 dark:border-[#343b47] dark:text-white dark:placeholder:text-slate-600" disabled={!canWrite} maxLength={300} onChange={(event) => change('title', event.target.value)} placeholder="What needs to be done?" required value={form.title} />
-          </label>
-          <label className="block text-xs font-medium text-slate-500">Description / notes
-            <textarea className="mt-2 min-h-24 w-full resize-y rounded-lg border border-slate-200 bg-transparent p-3 text-sm text-slate-800 placeholder:text-slate-400 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} maxLength={5000} onChange={(event) => change('note', event.target.value)} placeholder="Description, blockers, or who you are waiting on" value={form.note} />
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Status<select className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('status', event.target.value)} value={form.status}>{STATUSES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Priority<select className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('priority', event.target.value)} value={form.priority}>{PRIORITIES.map((value) => <option key={value} value={value}>{value === 'med' ? 'Medium' : value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Workstream<select className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('ws', event.target.value)} value={form.ws}>{WORKSTREAMS.map((item) => <option key={item}>{item}</option>)}</select></label>
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Due date<input className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('day', event.target.value)} required type="date" value={form.day} /></label>
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Owner<input className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} maxLength={80} onChange={(event) => change('owner', event.target.value)} placeholder="Unassigned" value={form.owner} /></label>
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Due time<input className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('due', event.target.value)} type="time" value={form.due} /></label>
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500 sm:col-span-2">Watcher<input className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} maxLength={80} onChange={(event) => change('watcher', event.target.value)} placeholder="Optional" value={form.watcher} /></label>
+      <form aria-labelledby="task-dialog-title" aria-modal="true" className="my-auto flex max-h-[min(94vh,900px)] w-full max-w-[860px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-[#343b47] dark:bg-[#14171c]" id="task-form" onSubmit={submit} role="dialog">
+        <div className="grid gap-5 overflow-y-auto px-8 pb-2 pt-7">
+          <div className="flex items-center justify-between">
+            <p className="text-base font-medium text-slate-500 dark:text-slate-400" id="task-dialog-title">Optima Close-out <span className="mx-2 text-slate-300 dark:text-slate-600">/</span> {isNew ? 'New task' : `Task ${String(task.n || '').padStart(3, '0')}`}</p>
+            <button aria-label="Close dialog" className="grid size-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-[#242a33]" onClick={onClose} type="button"><Icon name="close" /></button>
           </div>
-          {!isNew && (
-            <section className="border-t border-slate-100 pt-4 dark:border-[#242a33]">
-              <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">Subtasks <span className="font-normal text-slate-400">{subtasks.filter((item) => item.done).length}/{subtasks.length}</span></h3>
-              <div className="grid gap-2">
-                {subtasks.map((subtask) => (
-                  <div className="flex items-center gap-2" key={subtask.id}>
+          <input aria-label="Task name" autoFocus className="w-full border-0 bg-transparent p-0 text-4xl font-semibold tracking-tight text-slate-950 placeholder:text-slate-400 focus:outline-none dark:text-white" disabled={!canWrite} maxLength={300} onChange={(event) => change('title', event.target.value)} placeholder="Task name" ref={titleRef} required value={form.title} />
+          <textarea aria-label="Description" className="min-h-28 w-full resize-y border-0 bg-transparent p-0 text-xl text-slate-800 placeholder:text-slate-400 focus:outline-none dark:text-slate-100" disabled={!canWrite} maxLength={5000} onChange={(event) => change('note', event.target.value)} placeholder="Description, blockers, who you are waiting on" value={form.note} />
+
+          {(isNew ? pending : subtasks).length > 0 && (
+            <ul className="grid gap-2">
+              {isNew
+                ? pending.map((title, index) => (
+                  <li className="flex items-center gap-3 text-base text-slate-700 dark:text-slate-300" key={`${title}-${index}`}>
+                    <span className="size-4 rounded border border-slate-300 dark:border-[#343b47]" />
+                    <span className="min-w-0 flex-1 truncate">{title}</span>
+                    <button aria-label={`Remove ${title}`} className="grid size-7 place-items-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40" onClick={() => setPending((current) => current.filter((_, i) => i !== index))} type="button"><Icon className="size-3.5" name="trash" /></button>
+                  </li>
+                ))
+                : subtasks.map((subtask) => (
+                  <li className="flex items-center gap-3" key={subtask.id}>
                     <input aria-label={`Complete ${subtask.title}`} checked={subtask.done} className="size-4 accent-[#86bc25]" disabled={!canWrite} onChange={(event) => onUpdateSubtask(subtask, { done: event.target.checked })} type="checkbox" />
-                    <input aria-label="Subtask title" className={`min-w-0 flex-1 border-b border-transparent bg-transparent py-1 text-sm text-slate-700 focus:border-slate-300 dark:text-slate-300 dark:focus:border-[#343b47] ${subtask.done ? 'text-slate-400 line-through' : ''}`} defaultValue={subtask.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== subtask.title) onUpdateSubtask(subtask, { title }); else if (!title) event.currentTarget.value = subtask.title; }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
+                    <input aria-label="Subtask title" className={`min-w-0 flex-1 border-b border-transparent bg-transparent py-1 text-base text-slate-700 focus:border-slate-300 focus:outline-none dark:text-slate-300 dark:focus:border-[#343b47] ${subtask.done ? 'text-slate-400 line-through' : ''}`} defaultValue={subtask.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== subtask.title) onUpdateSubtask(subtask, { title }); else if (!title) event.currentTarget.value = subtask.title; }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
                     <button aria-label={`Delete ${subtask.title}`} className="grid size-7 place-items-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/40" disabled={!canWrite} onClick={() => onDeleteSubtask(subtask)} type="button"><Icon className="size-3.5" name="trash" /></button>
-                  </div>
+                  </li>
                 ))}
-                <div className="mt-1 flex gap-2">
-                  <input aria-label="New subtask" className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-transparent px-3 text-sm dark:border-[#343b47] dark:text-slate-100" maxLength={300} onChange={(event) => setNewSubtask(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addSubtask(event); } }} placeholder="Add a subtask" value={newSubtask} />
-                  <button className="rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-700 disabled:opacity-40 dark:border-[#343b47] dark:text-slate-200" disabled={!newSubtask.trim() || !canWrite} onClick={addSubtask} type="button">Add</button>
-                </div>
-              </div>
-            </section>
+            </ul>
           )}
+          <div className="flex gap-3">
+            <input aria-label="New subtask" className="h-12 min-w-0 flex-1 rounded-lg border border-slate-200 bg-transparent px-4 text-base text-slate-800 placeholder:text-slate-400 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} maxLength={300} onChange={(event) => setNewSubtask(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addSubtask(event); } }} placeholder="Add a subtask (optional), press Enter" value={newSubtask} />
+            <button className="rounded-lg border border-slate-200 px-5 text-base font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-40 dark:border-[#343b47] dark:text-slate-200 dark:hover:bg-[#1b2028]" disabled={!newSubtask.trim() || !canWrite} onClick={addSubtask} type="button">Add subtask</button>
+          </div>
+
+          <div>
+            <Row label="Status">
+              <div className="flex flex-wrap gap-3">{STATUSES.map(({ value, label }) => <button aria-pressed={form.status === value} className={pill(form.status === value)} disabled={!canWrite} key={value} onClick={() => change('status', value)} type="button">{label}</button>)}</div>
+            </Row>
+            <Row label="Priority">
+              <div className="flex flex-wrap gap-3">{PRIORITIES.map((value) => <button aria-pressed={form.priority === value} className={pill(form.priority === value)} disabled={!canWrite} key={value} onClick={() => change('priority', value)} type="button">{priorityLabel(value)}</button>)}</div>
+            </Row>
+            <Row label="Workstream">
+              <select aria-label="Workstream" className={control} disabled={!canWrite} onChange={(event) => change('ws', event.target.value)} value={form.ws}>{WORKSTREAMS.map((item) => <option key={item}>{item}</option>)}</select>
+            </Row>
+            <Row label="Owner">
+              <input aria-label="Owner" className={control} disabled={!canWrite} list="task-people" maxLength={80} onChange={(event) => change('owner', event.target.value)} placeholder="Unassigned" value={form.owner} />
+            </Row>
+            <Row label="Watcher">
+              <div className="grid gap-3">
+                <input aria-label="Watcher" className={control} disabled={!canWrite} list="task-people" maxLength={80} onChange={(event) => change('watcher', event.target.value)} placeholder="Follows up on this" value={form.watcher} />
+                {people.length > 0 && <div className="flex flex-wrap gap-2">{people.map((person) => <button className={`${pill(form.watcher === person)} !py-2`} disabled={!canWrite} key={person} onClick={() => change('watcher', form.watcher === person ? '' : person)} type="button">{person}</button>)}</div>}
+              </div>
+              <datalist id="task-people">{people.map((person) => <option key={person} value={person} />)}</datalist>
+            </Row>
+            <Row hint={<p className="mt-2 max-w-md text-sm text-slate-400 sm:hidden">Optional. Makes the task time bound for the chosen date.</p>} label="Due time">
+              <div className="flex flex-wrap items-center gap-4">
+                <input aria-label="Due time" className={`${control} !w-[260px]`} disabled={!canWrite} onChange={(event) => change('due', event.target.value)} type="time" value={form.due} />
+                <span className="hidden max-w-sm text-base text-slate-400 sm:block">Optional. Makes the task time bound for the chosen date.</span>
+              </div>
+            </Row>
+            <Row label="Date">
+              <input aria-label="Date" className={control} disabled={!canWrite} onChange={(event) => change('day', event.target.value)} required type="date" value={form.day} />
+            </Row>
+            <div className="border-t border-slate-200 dark:border-[#242a33]" />
+          </div>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-200" role="alert">{error}</p>}
         </div>
-        <footer className="flex items-center gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4 dark:border-[#242a33] dark:bg-[#181c22]">
-          {!isNew && canWrite && <button className="mr-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40" onClick={onDelete} type="button"><Icon className="size-4" name="trash" />Delete</button>}
-          {isNew && <span className="mr-auto text-xs text-slate-400">Ctrl/⌘ + Enter to save</span>}
-          <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white dark:border-[#343b47] dark:text-slate-200 dark:hover:bg-[#242a33]" onClick={onClose} type="button">Cancel</button>
-          {canWrite && <button className="rounded-lg bg-[#86bc25] px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-[#97cf2e] disabled:opacity-50" disabled={saving} type="submit">{saving ? 'Saving…' : isNew ? 'Create task' : 'Save changes'}</button>}
+        <footer className="flex items-center gap-3 bg-slate-50 px-8 py-5 dark:bg-[#181c22]">
+          {isNew
+            ? <label className="mr-auto inline-flex items-center gap-3 text-base text-slate-500 dark:text-slate-400"><input checked={createAnother} className="size-5 accent-[#86bc25]" onChange={(event) => setCreateAnother(event.target.checked)} type="checkbox" />Create another</label>
+            : canWrite && <button className="mr-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-base text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40" onClick={() => onDelete(task)} type="button"><Icon className="size-4" name="trash" />Delete</button>}
+          <button className="h-11 rounded-lg border border-slate-200 bg-white px-5 text-base font-medium text-slate-800 hover:bg-slate-50 dark:border-[#343b47] dark:bg-transparent dark:text-slate-200 dark:hover:bg-[#242a33]" onClick={onClose} type="button">Cancel</button>
+          {canWrite && <button className="h-11 rounded-lg bg-[#86bc25] px-5 text-base font-semibold text-slate-950 hover:bg-[#97cf2e] disabled:cursor-not-allowed disabled:opacity-50" disabled={saving || !ready} type="submit">{saving ? 'Saving…' : isNew ? 'Create task' : 'Save changes'}</button>}
         </footer>
       </form>
     </div>

@@ -1,5 +1,5 @@
 import Icon from './Icon.jsx';
-import { initials, WORKSTREAMS } from '../utils.js';
+import { initials, TEAM, WORKSTREAMS } from '../utils.js';
 
 const workstreamColors = [
   'bg-lime-500/20 text-lime-400',
@@ -28,7 +28,7 @@ function FilterButton({ active, collapsed, count, label, onClick, color = 'bg-sl
 }
 
 export default function Sidebar({ tasks, workstream, owner, onWorkstream, onOwner, theme, onTheme, collapsed = false, onCollapse }) {
-  const owners = [...new Set(tasks.map((task) => task.owner).filter(Boolean))];
+  const owners = [...new Set([...TEAM, ...tasks.map((task) => task.owner).filter(Boolean)])];
   const countsFor = (property, value) => tasks.filter((task) => property === 'all' || task[property] === value).length;
   const heading = 'px-3 pb-2 text-[11px] font-semibold uppercase tracking-[.16em] text-slate-500';
 

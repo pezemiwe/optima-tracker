@@ -1,4 +1,5 @@
 export const WORKSTREAMS = ['OPEX', 'DAMS', 'Print-Paper', 'BRD', 'Environment', 'Testing', 'Other'];
+export const TEAM = ['Tosin Ilesanmi', 'Olamide Aladeyelu', 'Paul Ezemiwe', 'Samuel Kolajo', 'Onyenze Chibueze', 'Iyinoluwa Oluwalade'];
 export const STATUSES = [
   { value: 'todo', label: 'To do', color: 'slate' },
   { value: 'doing', label: 'In progress', color: 'blue' },

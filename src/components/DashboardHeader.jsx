@@ -18,7 +18,7 @@ export default function DashboardHeader({
       </nav>
       <div className="flex h-10 items-center rounded-lg border border-slate-200 bg-white dark:border-[#343b47] dark:bg-[#14171c]">
         <button aria-label="Previous day" className="grid size-9 place-items-center text-slate-500 hover:text-slate-950 dark:hover:text-white" onClick={() => onDayChange(shiftDate(day, -1))} type="button"><Icon className="size-3.5" name="chevronLeft" /></button>
-        <span className="min-w-[96px] whitespace-nowrap px-1 text-center text-sm font-medium text-slate-700 dark:text-slate-200">{allDays ? 'All dates' : `${formatDate(day)}${isToday ? ' · Today' : ''}`}</span>
+        <span className="min-w-[96px] whitespace-nowrap px-1 text-center text-sm font-medium text-slate-700 dark:text-slate-200">{allDays ? 'All days' : `${formatDate(day)}${isToday ? ' · Today' : ''}`}</span>
         <button aria-label="Next day" className="grid size-9 place-items-center text-slate-500 hover:text-slate-950 dark:hover:text-white" onClick={() => onDayChange(shiftDate(day, 1))} type="button"><Icon className="size-3.5" name="chevronRight" /></button>
       </div>
       <button className={outline} onClick={onToday} type="button">Today</button>
