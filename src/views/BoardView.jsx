@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
-import { DueBadge, LabelList, SubtaskProgress, TaskCounters } from '../components/TaskBits.jsx';
+import { BlockedBadge, DueBadge, LabelList, SubtaskProgress, TaskCounters } from '../components/TaskBits.jsx';
 import { Avatar, PriorityIcon, StatusDot } from '../components/ui.jsx';
 import { positionBetween } from '../lib/filters.mjs';
 import { useWorkspace } from '../state/workspace.jsx';
@@ -28,6 +28,7 @@ function Card({ task, pd, canWrite, dragging, onOpen, onDragStart, onDragEnd, ac
       <p className={`mt-1.5 font-medium leading-snug ${done ? 'faint line-through' : 'text-slate-900 dark:text-slate-100'}`}>{task.title}</p>
       {task.labelIds.length > 0 && <div className="mt-2 flex flex-wrap gap-1"><LabelList ids={task.labelIds} labelById={pd.labelById} max={3} /></div>}
       <div className="mt-3 flex items-center gap-3">
+        <BlockedBadge task={task} />
         <DueBadge done={done} showTime={false} task={task} />
         <SubtaskProgress task={task} />
         <TaskCounters task={task} />

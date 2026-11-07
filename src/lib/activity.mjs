@@ -25,6 +25,9 @@ export function describeActivity(a) {
       return `${parts.join(' and ')} (labels)`;
     }
     case 'task.commented': return 'commented';
+    case 'task.attachment': return `attached the file ${d.name}`;
+    case 'task.attachment_removed': return `removed the file ${d.name}`;
+    case 'task.relation': return `linked this task: ${{ blocks: 'blocks', relates: 'relates to', duplicates: 'duplicates' }[d.type] || d.type} ${d.other}`;
     case 'task.link': return `attached a link: ${d.name}`;
     case 'project.created': return `created the project ${d.name}`;
     case 'project.updated': return `updated the project ${d.name}`;

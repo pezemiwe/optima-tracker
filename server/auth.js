@@ -121,6 +121,7 @@ function originCheck(req, res, next) {
 
 function requireJson(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS', 'DELETE'].includes(req.method)) return next();
+  if (req.method === 'POST' && /^\/tasks\/[^/]+\/attachments$/.test(req.path)) return next(); // raw file upload
   if (!/^application\/json/.test(req.headers['content-type'] || '')) return next(new HttpError(415, 'JSON required.'));
   next();
 }

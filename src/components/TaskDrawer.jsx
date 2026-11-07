@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../api.js';
+import { api, uploadFile } from '../api.js';
 import Icon from './Icon.jsx';
+import Markdown from './Markdown.jsx';
 import MentionTextarea from './MentionTextarea.jsx';
 import { Checkbox, DateField, LabelSelect, PrioritySelect, StatusSelect } from './TaskBits.jsx';
 import { Avatar, LabelChip, Popover, Spinner, UserSelect, useConfirm, useEscape, useToast } from './ui.jsx';
-import { describeActivity, mentionedIds, splitMentions } from '../lib/activity.mjs';
+import { describeActivity, mentionedIds } from '../lib/activity.mjs';
+import { toggleTaskLine } from '../lib/markdown.mjs';
 import { formatDuration, formatDay, parseDuration, timeAgo } from '../lib/dates.mjs';
 import { useRoute } from '../router.jsx';
 import { useAuth } from '../state/auth.jsx';
@@ -20,13 +22,7 @@ function Prop({ label, children }) {
 }
 
 function CommentBody({ body, members }) {
-  return (
-    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800 dark:text-slate-200">
-      {splitMentions(body, members).map((p, i) => (p.mention
-        ? <span className="rounded bg-[#86bc25]/20 px-0.5 font-medium text-[#3d6208] dark:text-[#a6d95a]" key={i}>{p.text}</span>
-        : <span key={i}>{p.text}</span>))}
-    </p>
-  );
+  return <Markdown members={members} source={body} />;
 }
 
 function Comment({ c, me, members, canAdmin, canWrite, onEdit, onDelete }) {
@@ -76,6 +72,10 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [descDirty, setDescDirty] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [uploading, setUploading] = useState([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [relForm, setRelForm] = useState(null); // { kind, q, results }
   const [estimate, setEstimate] = useState('');
   const [tab, setTab] = useState('all');
   const [comment, setComment] = useState('');
@@ -100,7 +100,7 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
     } catch (e) { if (mine === seq.current) setError(e.message); }
   }, [taskId]);
 
-  useEffect(() => { setDetail(null); setComment(''); setSubTitle(''); setTab('all'); }, [taskId]);
+  useEffect(() => { setDetail(null); setComment(''); setSubTitle(''); setTab('all'); setEditingDesc(false); setRelForm(null); }, [taskId]);
   useEffect(() => { load(); }, [load, rev]);
   useEffect(() => { panel.current?.focus(); }, [taskId]);
 
@@ -156,6 +156,37 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
     try { await navigator.clipboard.writeText(`${window.location.origin}${path}?task=${number}`); toast.success('Link copied'); } catch { toast.error('Could not copy the link.'); }
   };
 
+  async function uploadFiles(fileList) {
+    const files = [...fileList];
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) { toast.error(`${file.name} is larger than 10 MB.`); continue; }
+      if (file.size === 0) { toast.error(`${file.name} is empty.`); continue; }
+      setUploading((u) => [...u, file.name]);
+      try { await uploadFile(`/tasks/${taskId}/attachments`, file); } catch (e) { toast.error(`${file.name}: ${e.message}`); } finally { setUploading((u) => u.filter((n) => n !== file.name)); }
+    }
+    await pd.afterWrite();
+    await load();
+  }
+
+  // Searching for a task to link: the workspace search already spans every project.
+  useEffect(() => {
+    if (!relForm || relForm.q.trim().length < 2) return undefined;
+    const handle = setTimeout(() => {
+      api.get(`/workspaces/${workspace.id}/search?q=${encodeURIComponent(relForm.q.trim())}`)
+        .then((r) => setRelForm((f) => (f ? { ...f, results: r.tasks.filter((x) => x.id !== taskId) } : f))).catch(() => {});
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [relForm?.q, workspace.id, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function addRelation(other) {
+    const kind = relForm.kind;
+    const call = kind === 'blocked_by'
+      ? api.post(`/tasks/${other.id}/relations`, { toTaskId: taskId, type: 'blocks' })
+      : api.post(`/tasks/${taskId}/relations`, { toTaskId: other.id, type: { blocks: 'blocks', relates: 'relates', duplicates: 'duplicates' }[kind] });
+    await guard(() => call);
+    setRelForm(null);
+  }
+
   const feed = useMemo(() => {
     if (!detail) return [];
     const comments = detail.comments.map((c) => ({ kind: 'comment', at: c.createdAt, c }));
@@ -200,9 +231,19 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
               <input aria-label="Title" className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-2xl font-semibold tracking-tight hover:border-slate-200 focus:border-slate-300 focus:outline-none dark:hover:border-[#343b47] dark:focus:border-[#414957]" disabled={!canWrite} maxLength={300} onBlur={() => { const next = title.trim(); if (!next) setTitle(t.title); else if (next !== t.title) update({ title: next }); }} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} value={title} />
 
               <div className="mt-4">
-                <p className="field-label px-2">Description</p>
-                <textarea aria-label="Description" className="input min-h-28 resize-y" disabled={!canWrite} maxLength={20000} onBlur={saveDescription} onChange={(e) => { setDesc(e.target.value); setDescDirty(true); }} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveDescription(); } }} placeholder={canWrite ? 'Add details, context or acceptance criteria…' : 'No description.'} value={desc} />
-                {descDirty && <p className="faint mt-1 px-1 text-xs">Unsaved changes. Click outside the box or press Ctrl+Enter to save.</p>}
+                <div className="flex items-center px-2"><p className="field-label !mb-0">Description</p><span className="faint ml-2 text-[11px]">Markdown supported</span>
+                  {canWrite && !editingDesc && desc.trim() && <button className="btn btn-ghost btn-sm ml-auto" onClick={() => setEditingDesc(true)} type="button"><Icon className="size-3.5" name="edit" />Edit</button>}
+                </div>
+                {(editingDesc || !desc.trim()) && canWrite ? (
+                  <>
+                    <textarea aria-label="Description" autoFocus={editingDesc} className="input mt-1.5 min-h-32 resize-y font-mono text-[13px]" maxLength={20000} onBlur={async () => { await saveDescription(); if (desc.trim()) setEditingDesc(false); }} onChange={(e) => { setDesc(e.target.value); setDescDirty(true); }} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveDescription().then(() => desc.trim() && setEditingDesc(false)); } }} placeholder="Add details, context or acceptance criteria. Use - [ ] for a checklist." value={desc} />
+                    {descDirty && <p className="faint mt-1 px-1 text-xs">Unsaved changes. Click outside the box or press Ctrl+Enter to save.</p>}
+                  </>
+                ) : (
+                  <div className="mt-1.5 rounded-lg border border-transparent px-2 py-1 hover:border-slate-200 dark:hover:border-[#343b47]" onDoubleClick={() => canWrite && setEditingDesc(true)}>
+                    {desc.trim() ? <Markdown members={members} onToggleTask={canWrite ? (line) => update({ description: toggleTaskLine(t.description, line) }) : undefined} source={t.description} /> : <p className="faint text-sm">No description.</p>}
+                  </div>
+                )}
               </div>
 
               {!t.parentId && (
@@ -244,7 +285,7 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
                     <button className="btn btn-primary" disabled={!link.url.trim()} type="submit">Add</button>
                   </form>
                 )}
-                <ul className="grid gap-1">
+                <ul className="grid grid-cols-[minmax(0,1fr)] gap-1">
                   {detail.links.map((l) => (
                     <li className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-[#181c22]" key={l.id}>
                       <Icon className="size-4 shrink-0 text-slate-400" name="link" />
@@ -256,13 +297,79 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
                 </ul>
               </section>
 
+              <section aria-label="Attachments" className="mt-6" onDragLeave={() => setDragOver(false)} onDragOver={(e) => { if (canWrite && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }} onDrop={(e) => { if (!canWrite) return; e.preventDefault(); setDragOver(false); uploadFiles(e.dataTransfer.files); }}>
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><Icon className="size-4" name="file" />Files<span className="faint font-normal">{detail.attachments.length || ''}</span>
+                  {canWrite && <label className="btn btn-sm ml-auto cursor-pointer"><Icon className="size-3.5" name="upload" />Attach files<input aria-label="Attach files" className="sr-only" multiple onChange={(e) => { uploadFiles(e.target.files); e.target.value = ''; }} type="file" /></label>}
+                </h3>
+                <div className={`rounded-lg border border-dashed transition ${dragOver ? 'border-[#86bc25] bg-[#86bc25]/10' : 'border-transparent'}`}>
+                  <ul className="grid grid-cols-[minmax(0,1fr)] gap-1">
+                    {detail.attachments.map((a) => (
+                      <li className="group flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-[#181c22]" key={a.id}>
+                        {a.mime.startsWith('image/') && a.mime !== 'image/svg+xml'
+                          ? <a href={`/api/attachments/${a.id}?inline=1`} rel="noopener noreferrer" target="_blank"><img alt="" className="size-10 rounded-md border border-line object-cover" loading="lazy" src={`/api/attachments/${a.id}?inline=1`} /></a>
+                          : <span className="grid size-10 shrink-0 place-items-center rounded-md bg-slate-100 text-slate-500 dark:bg-[#1b2028]"><Icon name="file" /></span>}
+                        <div className="min-w-0 flex-1">
+                          <a className="block truncate text-sm font-medium text-[#3d6208] hover:underline dark:text-[#a6d95a]" download={a.name} href={`/api/attachments/${a.id}`}>{a.name}</a>
+                          <span className="faint text-xs">{a.size < 1024 * 1024 ? `${Math.max(1, Math.round(a.size / 1024))} KB` : `${(a.size / 1048576).toFixed(1)} MB`} · {a.createdByName || 'Unknown'} · {timeAgo(a.createdAt)}</span>
+                        </div>
+                        {canWrite && (a.createdByName === user.name || isAdmin) && <button aria-label={`Remove ${a.name}`} className="icon-btn size-7 opacity-0 group-hover:opacity-100 focus:opacity-100" onClick={() => guard(() => api.del(`/attachments/${a.id}`))} type="button"><Icon className="size-3.5" name="trash" /></button>}
+                      </li>
+                    ))}
+                    {uploading.map((n) => <li className="flex items-center gap-3 px-2 py-1.5 text-sm muted" key={`up-${n}`}><Spinner className="size-4" />Uploading {n}…</li>)}
+                    {!detail.attachments.length && !uploading.length && <li className="faint px-2 py-2 text-sm">{canWrite ? 'Drop files here, or use Attach files. Up to 10 MB each.' : 'No files.'}</li>}
+                  </ul>
+                </div>
+              </section>
+
+              <section aria-label="Dependencies" className="mt-6">
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><Icon className="size-4" name="lock" />Dependencies<span className="faint font-normal">{detail.relations.length || ''}</span>
+                  {canWrite && <button className="btn btn-sm ml-auto" onClick={() => setRelForm(relForm ? null : { kind: 'blocked_by', q: '', results: [] })} type="button"><Icon className="size-3.5" name="add" />Add</button>}
+                </h3>
+                {relForm && (
+                  <div className="surface mb-3 grid gap-2 p-3">
+                    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Relationship">
+                      {[['blocked_by', 'Blocked by'], ['blocks', 'Blocks'], ['relates', 'Related to'], ['duplicates', 'Duplicates']].map(([k, label]) => (
+                        <button aria-checked={relForm.kind === k} className={`btn btn-sm ${relForm.kind === k ? '!border-[#86bc25]' : ''}`} key={k} onClick={() => setRelForm((f) => ({ ...f, kind: k }))} role="radio" type="button">{label}</button>
+                      ))}
+                    </div>
+                    <input aria-label="Find a task to link" autoFocus className="input" onChange={(e) => setRelForm((f) => ({ ...f, q: e.target.value, results: [] }))} placeholder="Search by title or key (e.g. WEB-12)" value={relForm.q} />
+                    {relForm.results.length > 0 && (
+                      <ul className="max-h-48 overflow-y-auto rounded-lg border border-line">
+                        {relForm.results.map((r) => <li key={r.id}><button className="menu-item" onClick={() => addRelation(r)} type="button"><span className="faint font-mono text-xs">{r.projectKey}-{r.number}</span><span className="min-w-0 flex-1 truncate">{r.title}</span><span className="chip">{r.statusName}</span></button></li>)}
+                      </ul>
+                    )}
+                    {relForm.q.trim().length >= 2 && !relForm.results.length && <p className="faint text-xs">No matching tasks yet.</p>}
+                  </div>
+                )}
+                {['Blocked by', 'Blocks', 'Related to', 'Duplicates', 'Duplicated by'].map((label) => {
+                  const rows = detail.relations.filter((r) => ({ blocks: { out: 'Blocks', in: 'Blocked by' }, relates: { out: 'Related to', in: 'Related to' }, duplicates: { out: 'Duplicates', in: 'Duplicated by' } }[r.type][r.direction]) === label);
+                  if (!rows.length) return null;
+                  return (
+                    <div className="mb-2" key={label}>
+                      <p className="faint mb-1 px-1 text-[11px] font-semibold uppercase tracking-wider">{label}</p>
+                      <ul className="grid grid-cols-[minmax(0,1fr)] gap-1">
+                        {rows.map((r) => (
+                          <li className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-[#181c22]" key={r.id}>
+                            <Icon className={`size-4 ${label === 'Blocked by' && !r.otherDone ? 'text-red-500' : 'text-slate-400'}`} name={label === 'Blocked by' || label === 'Blocks' ? 'lock' : 'link'} />
+                            <button className={`min-w-0 flex-1 truncate text-left text-sm hover:underline ${r.otherDone ? 'faint line-through' : ''}`} onClick={() => (r.otherKey === t.projectKey ? goTo(r.otherNumber) : navigate(`/w/${workspace.slug}/p/${r.otherKey}/list?task=${r.otherNumber}`))} type="button"><span className="faint mr-2 font-mono text-xs">{r.otherKey}-{r.otherNumber}</span>{r.otherTitle}</button>
+                            <span className="chip">{r.otherStatus}</span>
+                            {canWrite && <button aria-label={`Remove link to ${r.otherKey}-${r.otherNumber}`} className="icon-btn size-6 opacity-0 group-hover:opacity-100 focus:opacity-100" onClick={() => guard(() => api.del(`/relations/${r.id}`))} type="button"><Icon className="size-3.5" name="close" /></button>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+                {!detail.relations.length && !relForm && <p className="faint px-1 text-sm">No dependencies.</p>}
+              </section>
+
               <section aria-label="Activity" className="mt-6">
                 <div className="mb-3 flex items-center gap-1 border-b border-line" role="tablist">
                   {[['all', 'All'], ['comments', `Comments${detail.comments.length ? ` (${detail.comments.length})` : ''}`], ['history', 'History']].map(([k, label]) => (
                     <button aria-selected={tab === k} className="tab" key={k} onClick={() => setTab(k)} role="tab" type="button">{label}</button>
                   ))}
                 </div>
-                <ul className="grid gap-4">
+                <ul className="grid grid-cols-[minmax(0,1fr)] gap-4">
                   {feed.map((item) => (item.kind === 'comment'
                     ? <Comment c={item.c} canAdmin={isAdmin} canWrite={canWrite} key={`c-${item.c.id}`} me={user} members={members} onDelete={(c) => guard(() => api.del(`/comments/${c.id}`))} onEdit={(c, body) => guard(() => api.patch(`/comments/${c.id}`, { body }))} />
                     : (

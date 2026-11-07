@@ -17,6 +17,9 @@ const TASK_COLUMNS = `
   (SELECT count(*) FROM tasks c JOIN statuses cs ON cs.id = c.status_id WHERE c.parent_id = t.id AND cs.category = 'done')::int AS "subtaskDone",
   (SELECT count(*) FROM comments cm WHERE cm.task_id = t.id)::int AS "commentCount",
   (SELECT count(*) FROM links l WHERE l.task_id = t.id)::int AS "linkCount",
+  (SELECT count(*) FROM attachments at WHERE at.task_id = t.id)::int AS "attachmentCount",
+  (SELECT count(*) FROM task_relations r JOIN tasks b ON b.id = r.from_task JOIN statuses bs ON bs.id = b.status_id
+    WHERE r.to_task = t.id AND r.type = 'blocks' AND bs.category <> 'done')::int AS "blockedCount",
   EXISTS (SELECT 1 FROM task_watchers w WHERE w.task_id = t.id AND w.user_id = $1) AS watching`;
 const TASK_FROM = 'FROM tasks t JOIN projects p ON p.id = t.project_id';
 
@@ -184,6 +187,17 @@ module.exports = function taskRoutes(pool) {
     res.json({ tasks: rows });
   }));
 
+  /* Dependency edges inside one project, for drawing arrows on the timeline. */
+  router.get('/projects/:pid/relations', wrap(async (req, res) => {
+    const { project } = await projectAccess(pool, req.user, req.params.pid, 'viewer');
+    const { rows } = await pool.query(
+      `SELECT r.id, r.from_task AS "from", r.to_task AS "to", r.type FROM task_relations r JOIN tasks a ON a.id = r.from_task JOIN tasks b ON b.id = r.to_task
+        WHERE a.project_id = $1 AND b.project_id = $1`,
+      [project.id],
+    );
+    res.json({ relations: rows });
+  }));
+
   router.post('/projects/:pid/tasks', wrap(async (req, res) => {
     const { project } = await projectAccess(pool, req.user, req.params.pid, 'member');
     assertWritable(project);
@@ -233,7 +247,7 @@ module.exports = function taskRoutes(pool) {
   router.get('/tasks/:tid', wrap(async (req, res) => {
     const { task } = await taskAccess(pool, req.user, req.params.tid, 'viewer');
     const full = await fetchTask(pool, req.user.id, task.id);
-    const [{ rows: desc }, { rows: reporter }, { rows: links }, { rows: comments }, { rows: activity }, { rows: watchers }, { rows: subtasks }] = await Promise.all([
+    const [{ rows: desc }, { rows: reporter }, { rows: links }, { rows: comments }, { rows: activity }, { rows: watchers }, { rows: subtasks }, { rows: attachments }, { rows: relations }] = await Promise.all([
       pool.query('SELECT description FROM tasks WHERE id = $1', [task.id]),
       pool.query('SELECT id, name, color FROM users WHERE id = $1', [task.reporter_id]),
       pool.query('SELECT l.id, l.name, l.url, l.created_at AS "createdAt", u.name AS "createdByName" FROM links l LEFT JOIN users u ON u.id = l.created_by WHERE l.task_id = $1 ORDER BY l.created_at', [task.id]),
@@ -249,10 +263,23 @@ module.exports = function taskRoutes(pool) {
       ),
       pool.query('SELECT user_id AS "userId" FROM task_watchers WHERE task_id = $1', [task.id]),
       pool.query(`SELECT ${TASK_COLUMNS} ${TASK_FROM} WHERE t.parent_id = $2 ORDER BY t.position, t.number`, [req.user.id, task.id]),
+      pool.query(
+        `SELECT a.id, a.filename AS name, a.mime, a.size, a.created_at AS "createdAt", u.name AS "createdByName"
+           FROM attachments a LEFT JOIN users u ON u.id = a.created_by WHERE a.task_id = $1 ORDER BY a.created_at`,
+        [task.id],
+      ),
+      pool.query(
+        `SELECT r.id, r.type, CASE WHEN r.from_task = $1 THEN 'out' ELSE 'in' END AS direction,
+                o.id AS "otherId", o.number AS "otherNumber", op.key AS "otherKey", o.title AS "otherTitle", os.name AS "otherStatus", os.category = 'done' AS "otherDone"
+           FROM task_relations r JOIN tasks o ON o.id = CASE WHEN r.from_task = $1 THEN r.to_task ELSE r.from_task END
+           JOIN projects op ON op.id = o.project_id JOIN statuses os ON os.id = o.status_id
+          WHERE r.from_task = $1 OR r.to_task = $1 ORDER BY r.created_at`,
+        [task.id],
+      ),
     ]);
     res.json({
       task: { ...full, description: desc[0].description },
-      reporter: reporter[0] || null, links, comments, activity, watchers: watchers.map((w) => w.userId), subtasks,
+      reporter: reporter[0] || null, links, comments, activity, watchers: watchers.map((w) => w.userId), subtasks, attachments, relations,
     });
   }));
 

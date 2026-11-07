@@ -32,9 +32,15 @@ export function SubtaskProgress({ task }) {
   );
 }
 
+export function BlockedBadge({ task }) {
+  if (!task.blockedCount) return null;
+  return <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400" title={`Blocked by ${task.blockedCount} open ${task.blockedCount === 1 ? 'task' : 'tasks'}`}><Icon className="size-3.5" name="lock" />Blocked</span>;
+}
+
 export function TaskCounters({ task }) {
   return (
     <>
+      {task.attachmentCount > 0 && <span className="faint inline-flex items-center gap-1 text-xs" title={`${task.attachmentCount} files`}><Icon className="size-3.5" name="paperclip" />{task.attachmentCount}</span>}
       {task.commentCount > 0 && <span className="faint inline-flex items-center gap-1 text-xs" title={`${task.commentCount} comments`}><Icon className="size-3.5" name="comment" />{task.commentCount}</span>}
       {task.linkCount > 0 && <span className="faint inline-flex items-center gap-1 text-xs" title={`${task.linkCount} links`}><Icon className="size-3.5" name="link" />{task.linkCount}</span>}
     </>

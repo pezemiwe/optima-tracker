@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
-import { Checkbox, DueBadge, LabelList, StatusSelect, SubtaskProgress, TaskCounters } from '../components/TaskBits.jsx';
+import { BlockedBadge, Checkbox, DueBadge, LabelList, StatusSelect, SubtaskProgress, TaskCounters } from '../components/TaskBits.jsx';
 import { EmptyState, PriorityIcon, StatusDot, UserSelect } from '../components/ui.jsx';
 import { groupTasks } from '../lib/filters.mjs';
 import { useWorkspace } from '../state/workspace.jsx';
@@ -46,6 +46,7 @@ function Row({ task, pd, actions, canWrite, selected, selecting, onSelect, onOpe
         <div className="flex items-center gap-2">
           {task.parentId && <Icon className="size-3.5 shrink-0 text-slate-400" name="subtask" />}
           <span className={`truncate font-medium ${done ? 'faint line-through' : 'text-slate-900 dark:text-slate-100'}`}>{task.title}</span>
+          <BlockedBadge task={task} />
           <SubtaskProgress task={task} />
           <TaskCounters task={task} />
         </div>

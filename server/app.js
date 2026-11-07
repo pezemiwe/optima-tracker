@@ -32,6 +32,7 @@ function createApp(pool, { mailer = createMailer() } = {}) {
   app.use('/api', require('./routes/projects')(pool));
   app.use('/api', require('./routes/tasks')(pool));
   app.use('/api', require('./routes/collab')(pool));
+  app.use('/api', require('./routes/files')(pool));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.', code: 'not_found' }));
 
   const dist = path.join(__dirname, '..', 'dist');

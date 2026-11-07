@@ -38,3 +38,19 @@ export const api = {
   put: (path, body = {}) => request('PUT', path, body),
   del: (path, body) => request('DELETE', path, body),
 };
+
+/* Uploads one file as a raw body. Returns the parsed JSON. */
+export async function uploadFile(path, file) {
+  let response;
+  try {
+    response = await fetch(`/api${path}?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file,
+    });
+  } catch {
+    throw new ApiError('Could not reach the server. Check your connection and try again.', 0, 'network');
+  }
+  let json = null;
+  try { json = await response.json(); } catch { /* empty body */ }
+  if (!response.ok) throw new ApiError(json?.error || `Upload failed (${response.status}).`, response.status, json?.code);
+  return json;
+}
