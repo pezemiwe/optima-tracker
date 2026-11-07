@@ -42,6 +42,7 @@ function createApp(pool) {
   }));
   // Single-page app: any other GET serves the shell so client-side routes work on refresh.
   app.get('*', (req, res, next) => {
+    if (path.extname(req.path)) return next(); // a missing asset should 404, not return the app shell
     const index = path.join(dist, 'index.html');
     if (!fs.existsSync(index)) return next();
     res.setHeader('Cache-Control', 'no-cache');

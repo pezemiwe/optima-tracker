@@ -2,7 +2,7 @@
   "name": "optima-closeout-tracker",
   "version": "1.0.0",
   "private": true,
-  "description": "Zenith Optima close-out checklist and Kanban tracker",
+  "description": "Optima Work Tracker: projects, tasks, boards and calendars for teams",
   "main": "server.js",
   "scripts": {
     "dev": "vite",

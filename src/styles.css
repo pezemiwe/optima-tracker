@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Dark mode follows the .dark class on <html>, which the theme setting controls. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @font-face {
   font-family: "IBM Plex Sans";
   font-style: normal;
@@ -90,3 +93,40 @@ body {
 dialog::backdrop {
   background: rgb(10 14 20 / 55%);
 }
+
+
+/* ---------- shared component classes ---------- */
+@layer components {
+  .surface { @apply rounded-xl border border-slate-200 bg-white dark:border-[#242a33] dark:bg-[#14171c]; }
+  .muted { @apply text-slate-500 dark:text-slate-400; }
+  .faint { @apply text-slate-400 dark:text-slate-500; }
+  .divide-line { @apply divide-slate-100 dark:divide-[#242a33]; }
+  .border-line { @apply border-slate-200 dark:border-[#242a33]; }
+
+  .btn { @apply inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#343b47] dark:bg-[#14171c] dark:text-slate-200 dark:hover:bg-[#1b2028]; }
+  .btn-sm { @apply h-8 px-2.5 text-xs; }
+  .btn-primary { @apply border-transparent bg-[#86bc25] font-semibold text-slate-950 hover:bg-[#97cf2e] dark:border-transparent dark:bg-[#86bc25] dark:text-slate-950 dark:hover:bg-[#97cf2e]; }
+  .btn-ghost { @apply border-transparent bg-transparent hover:bg-slate-100 dark:border-transparent dark:bg-transparent dark:hover:bg-[#1b2028]; }
+  .btn-danger { @apply border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-950/40; }
+  .icon-btn { @apply grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-[#242a33] dark:hover:text-white; }
+
+  .input { @apply h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-60 dark:border-[#343b47] dark:bg-[#14171c] dark:text-slate-100 dark:placeholder:text-slate-500; }
+  textarea.input { @apply h-auto min-h-20 py-2; }
+  .field-label { @apply mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400; }
+
+  .menu { @apply absolute z-[90] min-w-48 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-xl dark:border-[#343b47] dark:bg-[#181c22]; }
+  .menu-item { @apply flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#242a33]; }
+  .menu-item[aria-selected="true"], .menu-item[data-active="true"] { @apply bg-slate-100 dark:bg-[#242a33]; }
+
+  .chip { @apply inline-flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:border-[#343b47] dark:text-slate-300; }
+  .kbd { @apply inline-grid min-w-5 place-items-center rounded border border-slate-200 px-1 text-[11px] text-slate-500 dark:border-[#343b47] dark:text-slate-400; }
+  .tab { @apply -mb-px inline-flex cursor-pointer items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white; }
+  .tab[aria-selected="true"] { @apply border-[#86bc25] text-slate-950 dark:text-white; }
+  .page-title { @apply text-2xl font-semibold tracking-tight text-slate-950 dark:text-white; }
+}
+
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes slide-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.animate-pop { animation: pop .14s ease-out; }
+.animate-slide-in { animation: slide-in .18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .animate-pop, .animate-slide-in { animation: none; } }
