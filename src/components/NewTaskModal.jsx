@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import Icon from './Icon.jsx';
 import { DateField, LabelSelect, PrioritySelect, StatusSelect } from './TaskBits.jsx';
 import { Modal, Select, Spinner, StatusDot, UserSelect, useToast } from './ui.jsx';
+import { REPEAT_OPTIONS } from '../lib/repeat.mjs';
 import { parseDuration } from '../lib/dates.mjs';
 import { useWorkspace } from '../state/workspace.jsx';
 
@@ -16,9 +17,10 @@ export default function NewTaskModal({ defaults = {}, onClose, onCreated }) {
   const open = useMemo(() => projects.filter((p) => !p.archived), [projects]);
   const [projectId, setProjectId] = useState(defaults.projectId && open.some((p) => p.id === defaults.projectId) ? defaults.projectId : open[0]?.id);
   const [bundle, setBundle] = useState(null);
+  const [sprints, setSprints] = useState([]);
   const [form, setForm] = useState({
     title: '', description: '', statusId: defaults.statusId || null, priority: 'medium', assigneeId: defaults.assigneeId ?? null,
-    dueDate: defaults.dueDate || null, dueTime: '', startDate: null, labelIds: [], estimate: '',
+    dueDate: defaults.dueDate || null, dueTime: '', startDate: null, labelIds: [], estimate: '', sprintId: null, points: '', repeat: 'none',
   });
   const [parent] = useState(defaults.parent || null);
   const [another, setAnother] = useState(false);
@@ -30,6 +32,7 @@ export default function NewTaskModal({ defaults = {}, onClose, onCreated }) {
     if (!projectId) return undefined;
     let cancelled = false;
     setBundle(null);
+    api.get(`/projects/${projectId}/sprints`).then((r) => { if (!cancelled) setSprints(r.sprints.filter((x) => x.state !== 'completed')); }).catch(() => {});
     api.get(`/projects/${projectId}`).then((b) => {
       if (cancelled) return;
       setBundle(b);
@@ -55,6 +58,9 @@ export default function NewTaskModal({ defaults = {}, onClose, onCreated }) {
       const body = {
         title: form.title, description: form.description, statusId: form.statusId, priority: form.priority, assigneeId: form.assigneeId,
         labelIds: form.labelIds, estimateMinutes, startDate: form.startDate, dueDate: form.dueDate,
+        ...(form.sprintId && !parent ? { sprintId: form.sprintId } : {}),
+        ...(form.points !== '' ? { points: Math.min(1000, parseInt(form.points, 10) || 0) } : {}),
+        ...(form.repeat !== 'none' ? { recurrence: REPEAT_OPTIONS.find((o) => o.key === form.repeat).value } : {}),
         ...(form.dueDate && form.dueTime ? { dueTime: form.dueTime } : {}),
         ...(parent ? { parentId: parent.id } : {}),
       };
@@ -120,6 +126,9 @@ export default function NewTaskModal({ defaults = {}, onClose, onCreated }) {
                 <div className="min-w-0 flex-1"><span className="field-label">Due date</span><DateField ariaLabel="Due date" className="w-full [&_input]:w-full" min={form.startDate || undefined} onChange={(dueDate) => set({ dueDate, ...(dueDate ? {} : { dueTime: '' }) })} value={form.dueDate} /></div>
                 <div className="w-28"><span className="field-label">Time</span><input aria-label="Due time" className="input h-8 text-xs" disabled={!form.dueDate} onChange={(e) => set({ dueTime: e.target.value })} type="time" value={form.dueTime} /></div>
               </div>
+              {!parent && sprints.length > 0 && <div><span className="field-label">Sprint</span><Select ariaLabel="Sprint" className="btn w-full justify-between" onChange={(sprintId) => set({ sprintId })} options={[{ value: null, label: 'Backlog' }, ...sprints.map((x) => ({ value: x.id, label: x.name }))]} value={form.sprintId} /></div>}
+              <div><span className="field-label">Story points</span><input aria-label="Story points" className="input h-8 text-xs" inputMode="numeric" onChange={(e) => set({ points: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="e.g. 3" value={form.points} /></div>
+              <div><span className="field-label">Repeat</span><Select ariaLabel="Repeat" className="btn w-full justify-between" onChange={(repeat) => set({ repeat })} options={REPEAT_OPTIONS.map((o) => ({ value: o.key, label: o.label }))} value={form.repeat} /></div>
               <div><span className="field-label">Estimate</span><input aria-label="Estimate" className="input h-8 text-xs" onChange={(e) => set({ estimate: e.target.value })} placeholder="e.g. 1h 30m" value={form.estimate} /></div>
             </div>
           )}

@@ -25,6 +25,15 @@ export function describeActivity(a) {
       return `${parts.join(' and ')} (labels)`;
     }
     case 'task.commented': return 'commented';
+    case 'task.points': return `changed the story points to ${d.to == null ? 'none' : d.to}`;
+    case 'task.sprint': return d.to ? `moved this into ${d.to}${d.from ? ` (from ${d.from})` : ''}` : `moved this to the backlog${d.from ? ` (from ${d.from})` : ''}`;
+    case 'task.recurrence': return `set this to repeat: ${d.to}`;
+    case 'task.recurred': return `created the next occurrence, ${d.key}, due ${d.due}`;
+    case 'task.custom': return `set ${d.name} to ${d.to === null || d.to === undefined ? 'empty' : String(d.to)}`;
+    case 'sprint.created': return `planned the sprint ${d.name}`;
+    case 'sprint.started': return `started the sprint ${d.name}`;
+    case 'sprint.completed': return `completed the sprint ${d.name} (${d.done} done, ${d.moved} carried over)`;
+    case 'sprint.deleted': return `deleted the sprint ${d.name}`;
     case 'task.attachment': return `attached the file ${d.name}`;
     case 'task.attachment_removed': return `removed the file ${d.name}`;
     case 'task.relation': return `linked this task: ${{ blocks: 'blocks', relates: 'relates to', duplicates: 'duplicates' }[d.type] || d.type} ${d.other}`;

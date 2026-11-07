@@ -279,6 +279,126 @@ test('daily view brings unfinished tasks to the chosen day', async () => {
   assert.equal(await owner.locator('button:has-text("unfinished here")').count(), 0);
 });
 
+const ymd = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+const wrProject = async (api) => {
+  const wid = (await api('GET', '/auth/me')).json.workspaces[0].id;
+  const project = (await api('GET', `/workspaces/${wid}/projects`)).json.projects.find((p) => p.key === 'WR');
+  const tasks = (await api('GET', `/projects/${project.id}/tasks`)).json.tasks;
+  return { wid, project, byNumber: (n) => tasks.find((t) => t.number === n), tasks };
+};
+
+test('sprints: plan in the backlog, start, see the burndown, complete with carry-over', async () => {
+  const api = clientApi(owner);
+  await owner.goto(`${base}/w/zenith-optima/p/WR/backlog`);
+  await owner.waitForSelector('button:has-text("New sprint")');
+  await owner.click('button:has-text("New sprint")');
+  await owner.fill('#sp-name', 'Sprint 1');
+  await owner.click('button:has-text("Create sprint")');
+  await owner.waitForSelector('section[aria-label="Sprint 1"]');
+  for (const key of ['WR-1', 'WR-3']) {
+    await owner.click(`button[aria-label="Sprint for ${key}"]`);
+    await owner.click('[role="menu"] >> text=Sprint 1');
+  }
+  await owner.waitForSelector('section[aria-label="Sprint 1"] [role="listitem"]:has-text("WR-3")');
+  await owner.locator('section[aria-label="Backlog"] [role="listitem"]:has-text("WR-2")').dragTo(owner.locator('section[aria-label="Sprint 1"]'));
+  await owner.waitForSelector('section[aria-label="Sprint 1"] [role="listitem"]:has-text("WR-2")');
+  await owner.fill('input[aria-label="Story points for WR-1"]', '5');
+  await owner.press('input[aria-label="Story points for WR-1"]', 'Enter');
+  await owner.waitForTimeout(500);
+  await owner.click('button:has-text("Start sprint")');
+  await owner.waitForSelector('svg[aria-label^="Burndown"]');
+  assert.match(await owner.locator('svg[aria-label^="Burndown"]').getAttribute('aria-label'), /5 of 5 points remaining/);
+  assert.equal(await owner.locator('button:has-text("Start sprint")').count(), 0);
+
+  const { project, byNumber } = await wrProject(api);
+  await api('PATCH', `/tasks/${byNumber(1).id}`, { statusId: (await api('GET', `/projects/${project.id}`)).json.statuses.find((x) => x.category === 'done').id });
+  await owner.reload();
+  await owner.waitForSelector('svg[aria-label^="Burndown"]');
+  assert.match(await owner.locator('svg[aria-label^="Burndown"]').getAttribute('aria-label'), /0 of 5 points remaining/);
+
+  await owner.click('button:has-text("Complete sprint")');
+  await owner.waitForSelector('[role="dialog"] >> text=2 tasks are not finished');
+  await owner.click('[role="dialog"] button:has-text("Complete sprint")');
+  await owner.waitForSelector('text=Completed Sprint 1');
+  await owner.waitForSelector('text=Completed sprints');
+  const after = await wrProject(api);
+  assert.equal(after.byNumber(2).sprintId, null, 'unfinished work went back to the backlog');
+  assert.notEqual(after.byNumber(1).sprintId, null, 'finished work stays with the sprint');
+});
+
+test('timeline: dependency arrows, drag to reschedule, keyboard moves', async () => {
+  const api = clientApi(owner);
+  const { project, byNumber } = await wrProject(api);
+  await api('PATCH', `/tasks/${byNumber(1).id}`, { startDate: ymd(0), dueDate: ymd(4) });
+  await api('PATCH', `/tasks/${byNumber(2).id}`, { startDate: ymd(2), dueDate: ymd(6) });
+  await api('PATCH', `/tasks/${byNumber(3).id}`, { dueDate: ymd(8) });
+  await api('POST', `/tasks/${byNumber(1).id}/relations`, { toTaskId: byNumber(2).id, type: 'blocks' });
+  await owner.goto(`${base}/w/zenith-optima/p/WR/timeline`);
+  await owner.waitForSelector('[role="button"][aria-label^="WR-3 "]');
+  assert.ok((await owner.locator('svg path[marker-end]').count()) >= 1, 'a blocking dependency is drawn as an arrow');
+
+  const bar = owner.locator('[role="button"][aria-label^="WR-3 "]');
+  const box = await bar.boundingBox();
+  await owner.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await owner.mouse.down();
+  await owner.mouse.move(box.x + box.width / 2 + 24, box.y + box.height / 2, { steps: 4 });
+  await owner.mouse.move(box.x + box.width / 2 + 48, box.y + box.height / 2, { steps: 4 });
+  await owner.mouse.up();
+  await owner.waitForTimeout(800);
+  assert.equal((await api('GET', `/tasks/${byNumber(3).id}`)).json.task.dueDate, ymd(11), 'dragging 3 days right moves the due date 3 days');
+
+  await bar.focus();
+  await owner.keyboard.press('Alt+ArrowRight');
+  await owner.waitForTimeout(800);
+  assert.equal((await api('GET', `/tasks/${byNumber(3).id}`)).json.task.dueDate, ymd(12), 'Alt+Arrow moves a day');
+  await owner.keyboard.press('Alt+Shift+ArrowLeft');
+  await owner.waitForTimeout(800);
+  assert.equal((await api('GET', `/tasks/${byNumber(3).id}`)).json.task.dueDate, ymd(11), 'Alt+Shift+Arrow changes the end');
+  void project;
+});
+
+test('custom fields: define in project settings, then fill them in on a task', async () => {
+  await owner.goto(`${base}/w/zenith-optima/p/WR/settings`);
+  await owner.waitForSelector('input[aria-label="New field name"]');
+  await owner.fill('input[aria-label="New field name"]', 'Customer');
+  await owner.click('button:has-text("Add field")');
+  await owner.waitForSelector('input[aria-label="Name of field Customer"]');
+  await owner.fill('input[aria-label="New field name"]', 'Region');
+  await owner.click('button[aria-label="New field type"]');
+  await owner.click('[role="menu"] >> text=Choice list');
+  await owner.fill('input[aria-label="New field choices"]', 'EMEA, APAC');
+  await owner.click('button:has-text("Add field")');
+  await owner.waitForSelector('input[aria-label="Name of field Region"]');
+
+  await owner.goto(`${base}/w/zenith-optima/p/WR/list?task=1`);
+  await owner.waitForSelector('input[aria-label="Customer"]');
+  await owner.fill('input[aria-label="Customer"]', 'Acme');
+  await owner.press('input[aria-label="Customer"]', 'Enter');
+  await owner.waitForTimeout(500);
+  await owner.click('button[aria-label="Region"]');
+  await owner.click('[role="menu"] >> text=APAC');
+  await owner.waitForSelector('text=set Region to APAC');
+  await owner.reload();
+  await owner.waitForSelector('input[aria-label="Customer"]');
+  assert.equal(await owner.inputValue('input[aria-label="Customer"]'), 'Acme', 'the value is saved');
+  assert.match(await owner.locator('button[aria-label="Region"]').innerText(), /APAC/);
+});
+
+test('recurring tasks: finishing one creates the next', async () => {
+  const api = clientApi(owner);
+  await owner.goto(`${base}/w/zenith-optima/p/WR/list?task=2`);
+  await owner.waitForSelector('button[aria-label="Repeat"]');
+  await owner.click('button[aria-label="Repeat"]');
+  await owner.click('[role="menu"] >> text=Every day');
+  await owner.waitForSelector('text=set this to repeat: every day');
+  await owner.click('button:has-text("Mark as done")');
+  await owner.waitForSelector('text=created the next occurrence');
+  const { tasks, byNumber } = await wrProject(api);
+  const copies = tasks.filter((t) => t.title === byNumber(2).title);
+  assert.equal(copies.length, 2);
+  assert.equal(copies.find((t) => t.id !== byNumber(2).id).dueDate, ymd(7), 'the copy is due the day after the original (which was due in 6 days)');
+});
+
 test('the phone layout never scrolls sideways', async () => {
   const phone = await newPage(browser, errors, { viewport: { width: 390, height: 844 } });
   await login(phone, base, 'ada@example.com', 'a brand new password');
@@ -298,6 +418,7 @@ test('accessibility: no serious or critical WCAG A/AA violations on the main scr
     ['calendar', '/w/zenith-optima/p/CLO/calendar'], ['daily', '/w/zenith-optima/p/CLO/daily'], ['task panel', '/w/zenith-optima/p/CLO/list?task=3'],
     ['my tasks', '/w/zenith-optima/my-tasks'], ['inbox', '/w/zenith-optima/inbox'], ['members', '/w/zenith-optima/settings?tab=members'],
     ['project settings', '/w/zenith-optima/p/CLO/settings'], ['account', '/account'],
+    ['backlog', '/w/zenith-optima/p/WR/backlog'], ['timeline', '/w/zenith-optima/p/WR/timeline'],
   ];
   const failures = [];
   const scan = async (page, name) => {

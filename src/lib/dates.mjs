@@ -17,6 +17,8 @@ export function shiftDate(value, days) {
   return toISODate(d);
 }
 
+export const addDays = shiftDate;
+
 export function shiftMonth(value, months) {
   const d = parseISO(value);
   d.setDate(1);

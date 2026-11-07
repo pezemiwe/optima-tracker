@@ -11,7 +11,7 @@ export const PRIORITIES = [
 export const priorityMeta = (value) => PRIORITIES.find((p) => p.value === value) || PRIORITIES[2];
 
 export const DEFAULT_FILTERS = {
-  q: '', status: [], assignee: [], priority: [], labels: [], due: 'any', hideDone: false, showSubtasks: false,
+  q: '', status: [], assignee: [], priority: [], labels: [], due: 'any', sprint: 'any', hideDone: false, showSubtasks: false,
   groupBy: 'status', sortKey: 'manual', sortDir: 'asc',
 };
 
@@ -25,14 +25,14 @@ export const DUE_OPTIONS = [
 
 export function activeFilterCount(f) {
   return (f.status.length ? 1 : 0) + (f.assignee.length ? 1 : 0) + (f.priority.length ? 1 : 0)
-    + (f.labels.length ? 1 : 0) + (f.due !== 'any' ? 1 : 0) + (f.hideDone ? 1 : 0);
+    + (f.labels.length ? 1 : 0) + (f.due !== 'any' ? 1 : 0) + (f.sprint !== 'any' ? 1 : 0) + (f.hideDone ? 1 : 0);
 }
 
 /* Fills in any missing keys so old saved views keep working. */
 export const normaliseFilters = (cfg) => ({ ...DEFAULT_FILTERS, ...(cfg || {}) });
 
 /*
- * ctx: { statusById: Map(id -> {category}), meId, today }
+ * ctx: { statusById: Map(id -> {category}), meId, today, activeSprintId }
  * Subtasks are hidden unless showSubtasks is on or a filter/search is active
  * (so a search can find a matching subtask).
  */
@@ -58,6 +58,9 @@ export function filterTasks(tasks, rawFilters, ctx) {
     if (f.due === 'today' && t.dueDate !== today) return false;
     if (f.due === 'week' && !(t.dueDate && t.dueDate >= today && t.dueDate <= weekEnd)) return false;
     if (f.due === 'none' && t.dueDate) return false;
+    if (f.sprint === 'none' && t.sprintId) return false;
+    if (f.sprint === 'active' && !(ctx.activeSprintId && t.sprintId === ctx.activeSprintId)) return false;
+    if (f.sprint !== 'any' && f.sprint !== 'none' && f.sprint !== 'active' && t.sprintId !== f.sprint) return false;
     if (needle) {
       const hay = `${t.projectKey}-${t.number} ${t.number} ${t.title}`.toLowerCase();
       if (!hay.includes(needle)) return false;

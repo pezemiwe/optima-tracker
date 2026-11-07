@@ -95,7 +95,7 @@ export function useProjectData(projectKey) {
     const mine = ++seq.current;
     const stale = () => mine !== seq.current; // a newer request superseded this one
     try {
-      const p = await api.get(`/projects/${projectId}`);
+      const [p, sp] = await Promise.all([api.get(`/projects/${projectId}`), api.get(`/projects/${projectId}/sprints`)]);
       if (stale()) return;
       const progressive = !hasData.current;
       let tasks = [];
@@ -107,7 +107,7 @@ export function useProjectData(projectKey) {
         if (t.total !== undefined) setTotal(t.total);
         const done = !t.next;
         // On refresh keep the old data until everything is in, so the screen never flickers back to a partial list.
-        if (progressive || done) setData({ project: p.project, role: p.role, statuses: p.statuses, labels: p.labels, tasks });
+        if (progressive || done) setData({ project: p.project, role: p.role, statuses: p.statuses, labels: p.labels, fields: p.fields, sprints: sp.sprints, tasks });
         setLoadingMore(!done);
         if (done) break;
         after = `&after=${encodeURIComponent(t.next)}`;
@@ -124,7 +124,10 @@ export function useProjectData(projectKey) {
     const statuses = data?.statuses || [];
     const labels = data?.labels || [];
     const tasks = data?.tasks || [];
+    const sprints = data?.sprints || [];
     return {
+      sprintById: new Map(sprints.map((x) => [x.id, x])),
+      activeSprint: sprints.find((x) => x.state === 'active') || null,
       statusById: new Map(statuses.map((s) => [s.id, s])),
       statusRank: new Map(statuses.map((s) => [s.id, s.position])),
       labelById: new Map(labels.map((l) => [l.id, l])),
@@ -142,7 +145,7 @@ export function useProjectData(projectKey) {
 
   return {
     summary, loading: !data && !error && Boolean(summary), error, notFound: !summary, loadingMore, total,
-    project: data?.project, role: data?.role, statuses: data?.statuses || [], labels: data?.labels || [], tasks: data?.tasks || [],
+    project: data?.project, role: data?.role, statuses: data?.statuses || [], labels: data?.labels || [], fields: data?.fields || [], sprints: data?.sprints || [], tasks: data?.tasks || [],
     ...derived, workspaceId: workspace.id, reload: load, patchLocal, ready: Boolean(data),
     afterWrite: sync,
   };

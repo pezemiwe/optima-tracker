@@ -123,3 +123,23 @@ test('activity sentences and mention parsing', () => {
   assert.deepEqual(parts, [{ text: 'ping ', mention: false }, { text: '@Tosin Ilesanmi', mention: true }, { text: ' now', mention: false }]);
   assert.deepEqual(activity.splitMentions('no mentions', members), [{ text: 'no mentions', mention: false }]);
 });
+
+test('sprint filter: any, backlog, active and a specific sprint', () => {
+  const tasks = [mk(1, { sprintId: 's-a' }), mk(2, { sprintId: 's-b' }), mk(3, {})];
+  const run = (sprint) => filters.filterTasks(tasks, { sprint }, { ...ctx, activeSprintId: 's-a' }).map((t) => t.number);
+  assert.deepEqual(run('any'), [1, 2, 3]);
+  assert.deepEqual(run('none'), [3], 'backlog = no sprint');
+  assert.deepEqual(run('active'), [1]);
+  assert.deepEqual(run('s-b'), [2]);
+  assert.deepEqual(filters.filterTasks(tasks, { sprint: 'active' }, ctx).map((t) => t.number), [], 'no active sprint matches nothing');
+  assert.equal(filters.activeFilterCount({ ...filters.DEFAULT_FILTERS, sprint: 'none' }), 1);
+});
+
+test('colour helper picks readable text for any background', async () => {
+  const colors = await import('../src/lib/colors.mjs');
+  for (const bg of ['#65a30d', '#d97706', '#0d9488', '#2563eb', '#e11d48', '#0b0d10', '#ffffff', '#86bc25']) {
+    assert.ok(colors.contrast(colors.readableOn(bg), bg) >= 4.5, `${bg} gets readable text`);
+  }
+  assert.equal(colors.readableOn('#ffffff'), '#0b0d10');
+  assert.equal(colors.readableOn('#0b0d10'), '#ffffff');
+});

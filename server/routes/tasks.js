@@ -5,13 +5,15 @@ const { tx, touch } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { projectAccess, taskAccess, isMember } = require('../access');
 const { logActivity, notify, addWatcher } = require('../services');
+const { FREQS, spawnNext, describeRecurrence } = require('../recurrence');
+const { normaliseFieldValue } = require('./agile');
 
 /* One shape for a task everywhere in the API. $1 is the viewing user. */
 const TASK_COLUMNS = `
   t.id, t.number, t.project_id AS "projectId", p.key AS "projectKey", t.title, t.status_id AS "statusId", t.priority,
   t.assignee_id AS "assigneeId", t.reporter_id AS "reporterId", t.parent_id AS "parentId",
   t.start_date AS "startDate", t.due_date AS "dueDate", t.due_time AS "dueTime",
-  t.estimate_minutes AS "estimateMinutes", t.position, t.created_at AS "createdAt", t.updated_at AS "updatedAt", t.completed_at AS "completedAt",
+  t.estimate_minutes AS "estimateMinutes", t.sprint_id AS "sprintId", t.points, t.recurrence, t.position, t.created_at AS "createdAt", t.updated_at AS "updatedAt", t.completed_at AS "completedAt",
   COALESCE((SELECT array_agg(tl.label_id) FROM task_labels tl WHERE tl.task_id = t.id), '{}') AS "labelIds",
   (SELECT count(*) FROM tasks c WHERE c.parent_id = t.id)::int AS "subtaskCount",
   (SELECT count(*) FROM tasks c JOIN statuses cs ON cs.id = c.status_id WHERE c.parent_id = t.id AND cs.category = 'done')::int AS "subtaskDone",
@@ -20,6 +22,7 @@ const TASK_COLUMNS = `
   (SELECT count(*) FROM attachments at WHERE at.task_id = t.id)::int AS "attachmentCount",
   (SELECT count(*) FROM task_relations r JOIN tasks b ON b.id = r.from_task JOIN statuses bs ON bs.id = b.status_id
     WHERE r.to_task = t.id AND r.type = 'blocks' AND bs.category <> 'done')::int AS "blockedCount",
+  COALESCE((SELECT jsonb_object_agg(fv.field_id, fv.value) FROM task_field_values fv WHERE fv.task_id = t.id), '{}'::jsonb) AS fields,
   EXISTS (SELECT 1 FROM task_watchers w WHERE w.task_id = t.id AND w.user_id = $1) AS watching`;
 const TASK_FROM = 'FROM tasks t JOIN projects p ON p.id = t.project_id';
 
@@ -41,6 +44,20 @@ const taskSpec = {
   estimateMinutes: v.nullable(v.int(0, 100000)),
   labelIds: v.uuidList(50),
   position: v.num,
+  sprintId: v.nullable(v.uuid),
+  points: v.nullable(v.int(0, 1000)),
+  recurrence: (x) => {
+    if (x === null) return null;
+    if (!x || typeof x !== 'object' || Array.isArray(x)) throw new Error('must be null or { freq, interval }');
+    if (!FREQS.includes(x.freq)) throw new Error(`freq must be one of: ${FREQS.join(', ')}`);
+    const interval = x.interval === undefined ? 1 : x.interval;
+    if (!Number.isInteger(interval) || interval < 1 || interval > 52) throw new Error('interval must be a whole number from 1 to 52');
+    return { freq: x.freq, interval };
+  },
+  fields: (x) => {
+    if (!x || typeof x !== 'object' || Array.isArray(x) || Object.keys(x).length > 50) throw new Error('must be an object of field values');
+    return x;
+  },
 };
 
 function assertWritable(project) {
@@ -48,7 +65,7 @@ function assertWritable(project) {
 }
 
 async function projectStatuses(c, projectId) {
-  const { rows } = await c.query('SELECT id, name, category FROM statuses WHERE project_id = $1', [projectId]);
+  const { rows } = await c.query('SELECT id, name, category FROM statuses WHERE project_id = $1 ORDER BY position, name', [projectId]);
   return new Map(rows.map((s) => [s.id, s]));
 }
 
@@ -67,6 +84,32 @@ async function userName(c, id) {
   if (!id) return null;
   const { rows } = await c.query('SELECT name FROM users WHERE id = $1', [id]);
   return rows[0] ? rows[0].name : null;
+}
+
+/* Validates and stores custom field values; returns what changed, for the activity log. */
+async function writeFields(c, projectId, taskId, values) {
+  const { rows: defs } = await c.query('SELECT id, name, type, options FROM custom_fields WHERE project_id = $1', [projectId]);
+  const byId = new Map(defs.map((d) => [d.id, d]));
+  const { rows: current } = await c.query('SELECT field_id, value FROM task_field_values WHERE task_id = $1', [taskId]);
+  const old = new Map(current.map((r) => [r.field_id, r.value]));
+  const changes = [];
+  for (const [fieldId, raw] of Object.entries(values)) {
+    const def = byId.get(fieldId);
+    if (!def) throw new HttpError(400, 'That field does not belong to this project.');
+    const value = normaliseFieldValue(def, raw);
+    const before = old.has(fieldId) ? old.get(fieldId) : null;
+    if (JSON.stringify(before) === JSON.stringify(value)) continue;
+    if (value === null) await c.query('DELETE FROM task_field_values WHERE task_id = $1 AND field_id = $2', [taskId, fieldId]);
+    else await c.query('INSERT INTO task_field_values (task_id, field_id, value) VALUES ($1,$2,$3) ON CONFLICT (task_id, field_id) DO UPDATE SET value = EXCLUDED.value', [taskId, fieldId, JSON.stringify(value)]);
+    changes.push({ field: 'custom', name: def.name, from: before, to: value });
+  }
+  return changes;
+}
+
+async function assertSprint(c, projectId, sprintId) {
+  const { rows } = await c.query("SELECT id, name FROM sprints WHERE id = $1 AND project_id = $2 AND state <> 'completed'", [sprintId, projectId]);
+  if (!rows[0]) throw new HttpError(400, 'That sprint is not available in this project.');
+  return rows[0];
 }
 
 /*
@@ -99,6 +142,21 @@ async function applyChanges(c, { user, task, project, changes }) {
   if ('estimateMinutes' in changes && changes.estimateMinutes !== task.estimate_minutes) {
     set.estimate_minutes = changes.estimateMinutes;
     log.push({ field: 'estimate', from: task.estimate_minutes, to: changes.estimateMinutes });
+  }
+
+  if ('points' in changes && changes.points !== task.points) { set.points = changes.points; log.push({ field: 'points', from: task.points, to: changes.points }); }
+  if ('recurrence' in changes && JSON.stringify(changes.recurrence) !== JSON.stringify(task.recurrence)) {
+    set.recurrence = changes.recurrence === null ? null : JSON.stringify(changes.recurrence);
+    set.recurrence_spawned = false;
+    log.push({ field: 'recurrence', to: describeRecurrence(changes.recurrence) });
+  }
+  if ('sprintId' in changes && changes.sprintId !== task.sprint_id) {
+    if (task.parent_id) throw new HttpError(400, 'Subtasks follow their parent task into a sprint.');
+    const next = changes.sprintId ? await assertSprint(c, project.id, changes.sprintId) : null;
+    let from = null;
+    if (task.sprint_id) { const { rows } = await c.query('SELECT name FROM sprints WHERE id = $1', [task.sprint_id]); from = rows[0] ? rows[0].name : null; }
+    set.sprint_id = changes.sprintId;
+    log.push({ field: 'sprint', from, to: next ? next.name : null });
   }
 
   let newAssignee = task.assignee_id;
@@ -137,8 +195,12 @@ async function applyChanges(c, { user, task, project, changes }) {
     }
   }
 
+  let fieldLog = [];
+  if ('fields' in changes) fieldLog = await writeFields(c, project.id, task.id, changes.fields);
+  for (const entry of fieldLog) log.push(entry);
+
   const keys = Object.keys(set);
-  if (keys.length || labelDiff) {
+  if (keys.length || labelDiff || fieldLog.length) {
     if (keys.length) {
       await c.query(
         `UPDATE tasks SET ${keys.map((k, i) => `${k} = $${i + 2}`).join(', ')}, updated_at = now() WHERE id = $1`,
@@ -170,6 +232,10 @@ async function applyChanges(c, { user, task, project, changes }) {
       workspaceId: project.workspace_id, taskId: task.id, actorId: user.id, type: 'status',
       body: `${user.name} moved ${label} to ${newStatus.name}`,
     });
+  }
+  if (statusChanged && newStatus.category === 'done' && task.recurrence && !task.recurrence_spawned && !('recurrence' in changes)) {
+    const firstTodo = [...statuses.values()].find((x) => x.category === 'todo') || [...statuses.values()][0];
+    await spawnNext(c, { user, task: { ...task, due_date: due, start_date: start }, project, firstTodoId: firstTodo.id, today: new Date().toISOString().slice(0, 10) });
   }
   return log.length > 0;
 }
@@ -241,20 +307,26 @@ module.exports = function taskRoutes(pool) {
         if (rows[0].parent_id) throw new HttpError(400, 'Subtasks cannot have their own subtasks.');
       }
       await assertLabels(c, project.id, body.labelIds || []);
+      if (body.sprintId) {
+        if (body.parentId) throw new HttpError(400, 'Subtasks follow their parent task into a sprint.');
+        await assertSprint(c, project.id, body.sprintId);
+      }
       if (body.startDate && body.dueDate && body.startDate > body.dueDate) throw new HttpError(400, 'The start date cannot be after the due date.', 'invalid');
 
       const { rows: seq } = await c.query('UPDATE projects SET task_seq = task_seq + 1 WHERE id = $1 RETURNING task_seq', [project.id]);
       const position = 'position' in body ? body.position : await nextPosition(c, project.id, status.id);
       const { rows } = await c.query(
         `INSERT INTO tasks (project_id, number, title, description, status_id, priority, assignee_id, reporter_id, parent_id,
-                            start_date, due_date, due_time, estimate_minutes, position, completed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, number`,
+                            start_date, due_date, due_time, estimate_minutes, position, completed_at, sprint_id, points, recurrence)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id, number`,
         [project.id, seq[0].task_seq, body.title, body.description || '', status.id, body.priority || 'medium', body.assigneeId || null, req.user.id,
           body.parentId || null, body.startDate || null, body.dueDate || null, body.dueDate ? (body.dueTime || null) : null,
-          body.estimateMinutes ?? null, position, status.category === 'done' ? new Date() : null],
+          body.estimateMinutes ?? null, position, status.category === 'done' ? new Date() : null, body.sprintId || null, body.points ?? null,
+          body.recurrence ? JSON.stringify(body.recurrence) : null],
       );
       const taskId = rows[0].id;
       for (const labelId of body.labelIds || []) await c.query('INSERT INTO task_labels (task_id, label_id) VALUES ($1,$2)', [taskId, labelId]);
+      if (body.fields) await writeFields(c, project.id, taskId, body.fields);
       await addWatcher(c, taskId, req.user.id);
       await addWatcher(c, taskId, body.assigneeId);
       const key = `${project.key}-${rows[0].number}`;
@@ -357,7 +429,7 @@ module.exports = function taskRoutes(pool) {
     const body = validate(req.body, {
       ids: v.uuidList(200),
       delete: v.bool,
-      changes: (x) => validate(x, { statusId: taskSpec.statusId, priority: taskSpec.priority, assigneeId: taskSpec.assigneeId, dueDate: taskSpec.dueDate, startDate: taskSpec.startDate, labelIds: taskSpec.labelIds }),
+      changes: (x) => validate(x, { statusId: taskSpec.statusId, priority: taskSpec.priority, assigneeId: taskSpec.assigneeId, dueDate: taskSpec.dueDate, startDate: taskSpec.startDate, labelIds: taskSpec.labelIds, sprintId: taskSpec.sprintId, points: taskSpec.points }),
     }, { required: ['ids'] });
     if (!body.ids.length) throw new HttpError(400, 'Select at least one task.');
     if (!body.delete && (!body.changes || !Object.keys(body.changes).length)) throw new HttpError(400, 'Nothing to change.');

@@ -7,6 +7,7 @@ import { EmptyState, Modal, Select, Spinner, StatusDot, TypeToConfirm, UserSelec
 import { Link, useRoute } from '../router.jsx';
 import { useProjectData, useWorkspace } from '../state/workspace.jsx';
 
+const FIELD_TYPES = [{ value: 'text', label: 'Text' }, { value: 'number', label: 'Number' }, { value: 'date', label: 'Date' }, { value: 'select', label: 'Choice list' }, { value: 'checkbox', label: 'Checkbox' }];
 const CATEGORIES = [{ value: 'todo', label: 'To do' }, { value: 'active', label: 'In progress' }, { value: 'done', label: 'Done' }];
 
 function Section({ title, description, children, action }) {
@@ -44,6 +45,20 @@ function LabelRow({ l, onChange, onDelete }) {
   );
 }
 
+function FieldRow({ f, onRename, onChoices, onDelete }) {
+  const [name, setName] = useState(f.name);
+  const [choices, setChoices] = useState(f.options.join(', '));
+  useEffect(() => { setName(f.name); setChoices(f.options.join(', ')); }, [f.name, f.options]);
+  return (
+    <li className="flex flex-wrap items-center gap-2 py-2.5">
+      <input aria-label={`Name of field ${f.name}`} className="input w-52" maxLength={40} onBlur={() => { const n = name.trim(); if (!n) setName(f.name); else if (n !== f.name) onRename(f, n); }} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} value={name} />
+      <span className="chip">{FIELD_TYPES.find((t) => t.value === f.type)?.label}</span>
+      {f.type === 'select' && <input aria-label={`Choices for ${f.name}`} className="input min-w-48 flex-1" onBlur={() => { const list = choices.split(',').map((c) => c.trim()).filter(Boolean); if (list.join('|') !== f.options.join('|')) onChoices(f, list); }} onChange={(e) => setChoices(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} placeholder="Comma separated, e.g. Low, Medium, High" value={choices} />}
+      <button aria-label={`Delete field ${f.name}`} className="icon-btn ml-auto" onClick={() => onDelete(f)} type="button"><Icon name="trash" /></button>
+    </li>
+  );
+}
+
 function ProjectSettingsBody({ projectKey }) {
   const { workspace, members, sync } = useWorkspace();
   const { navigate } = useRoute();
@@ -53,6 +68,7 @@ function ProjectSettingsBody({ projectKey }) {
   const [form, setForm] = useState(null);
   const [newStatus, setNewStatus] = useState({ name: '', category: 'active' });
   const [newLabel, setNewLabel] = useState('');
+  const [newField, setNewField] = useState({ name: '', type: 'text', options: '' });
   const [moveFor, setMoveFor] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -141,6 +157,19 @@ function ProjectSettingsBody({ projectKey }) {
           <form className="mt-3 flex gap-2 border-t border-line pt-3" onSubmit={(e) => { e.preventDefault(); run(() => api.post(`/projects/${pd.project.id}/labels`, { name: newLabel }), 'Label added').then(() => setNewLabel('')); }}>
             <input aria-label="New label name" className="input w-52" maxLength={40} onChange={(e) => setNewLabel(e.target.value)} placeholder="New label name" value={newLabel} />
             <button className="btn" disabled={!newLabel.trim()} type="submit"><Icon className="size-4" name="add" />Add label</button>
+          </form>
+        </Section>
+
+        <Section description="Extra information on every task, such as a customer, a budget or a region. Admins define the fields; anyone who can edit tasks fills them in." title="Custom fields">
+          <ul className="divide-y divide-line">
+            {pd.fields.map((f) => <FieldRow f={f} key={f.id} onChoices={(field, list) => run(() => api.patch(`/fields/${field.id}`, { options: list }))} onDelete={async (field) => { const ok = await confirm({ title: `Delete the “${field.name}” field?`, message: 'Its values are removed from every task.', confirmLabel: 'Delete field', danger: true }); if (ok) run(() => api.del(`/fields/${field.id}`)); }} onRename={(field, n) => run(() => api.patch(`/fields/${field.id}`, { name: n }))} />)}
+            {!pd.fields.length && <li className="faint py-2 text-sm">No custom fields yet.</li>}
+          </ul>
+          <form className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3" onSubmit={(e) => { e.preventDefault(); const options = newField.options.split(',').map((c) => c.trim()).filter(Boolean); run(() => api.post(`/projects/${pd.project.id}/fields`, { name: newField.name, type: newField.type, ...(newField.type === 'select' ? { options } : {}) }), 'Field added').then(() => setNewField((n) => ({ ...n, name: '', options: '' }))); }}>
+            <input aria-label="New field name" className="input w-52" maxLength={40} onChange={(e) => setNewField((n) => ({ ...n, name: e.target.value }))} placeholder="New field name" value={newField.name} />
+            <Select ariaLabel="New field type" className="btn w-40 justify-between" onChange={(type) => setNewField((n) => ({ ...n, type }))} options={FIELD_TYPES} value={newField.type} />
+            {newField.type === 'select' && <input aria-label="New field choices" className="input min-w-48 flex-1" onChange={(e) => setNewField((n) => ({ ...n, options: e.target.value }))} placeholder="Choices, comma separated" value={newField.options} />}
+            <button className="btn" disabled={!newField.name.trim() || (newField.type === 'select' && !newField.options.trim())} type="submit"><Icon className="size-4" name="add" />Add field</button>
           </form>
         </Section>
 

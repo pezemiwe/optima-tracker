@@ -14,9 +14,11 @@ import { useProjectData, useTaskActions, useWorkspace } from '../state/workspace
 import BoardView from './BoardView.jsx';
 import CalendarView from './CalendarView.jsx';
 import DailyView from './DailyView.jsx';
+import BacklogView from './BacklogView.jsx';
+import TimelineView from './TimelineView.jsx';
 import ListView from './ListView.jsx';
 
-const VIEWS = [['list', 'List', 'list'], ['board', 'Board', 'board'], ['calendar', 'Calendar', 'calendar'], ['daily', 'Daily', 'checkCircle']];
+const VIEWS = [['list', 'List', 'list'], ['board', 'Board', 'board'], ['backlog', 'Backlog', 'layers'], ['timeline', 'Timeline', 'timeline'], ['calendar', 'Calendar', 'calendar'], ['daily', 'Daily', 'checkCircle']];
 const GROUPS = [['status', 'Status'], ['assignee', 'Assignee'], ['priority', 'Priority'], ['label', 'Label'], ['none', 'No grouping']];
 const SORTS = [['manual', 'Manual order'], ['number', 'Key'], ['title', 'Title'], ['priority', 'Priority'], ['due', 'Due date'], ['status', 'Status'], ['created', 'Created'], ['updated', 'Last updated']];
 
@@ -109,6 +111,10 @@ export function exportProject(pd, members) {
     Due: t.dueDate || '',
     'Due time': t.dueTime || '',
     Estimate: t.estimateMinutes == null ? '' : formatDuration(t.estimateMinutes),
+    Sprint: t.sprintId ? (pd.sprintById.get(t.sprintId)?.name || '') : '',
+    Points: t.points ?? '',
+    Repeats: t.recurrence ? `${t.recurrence.freq} x${t.recurrence.interval}` : '',
+    ...Object.fromEntries(pd.fields.map((f) => [f.name, t.fields?.[f.id] === undefined ? '' : String(t.fields[f.id])])),
     Created: t.createdAt.slice(0, 10),
     Completed: t.completedAt ? t.completedAt.slice(0, 10) : '',
   }));
@@ -144,7 +150,7 @@ export default function ProjectPage({ projectKey, view }) {
   useEffect(() => { try { localStorage.setItem('optima-last-ws', workspace.slug); } catch { /* optional */ } }, [workspace.slug]);
 
   const setFilter = (patch) => setStored({ ...filters, ...patch });
-  const ctx = useMemo(() => ({ statusById: pd.statusById, meId: user.id, today: toISODate() }), [pd.statusById, user.id]);
+  const ctx = useMemo(() => ({ statusById: pd.statusById, meId: user.id, today: toISODate(), activeSprintId: pd.activeSprint?.id }), [pd.statusById, user.id, pd.activeSprint]);
   const visible = useMemo(() => sortTasks(filterTasks(pd.tasks, filters, ctx), filters, { statusRank: pd.statusRank }), [pd.tasks, filters, ctx, pd.statusRank]);
 
   const crumbs = [{ label: pd.project?.name || projectKey, to: `${base}/${view}` }];
@@ -201,7 +207,7 @@ export default function ProjectPage({ projectKey, view }) {
         {pd.project.archived && <p className="mt-4 flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100" role="status"><Icon className="size-4" name="archive" />This project is archived and read-only.{isAdmin && <Link className="font-medium underline" to={`${base}/settings`}>Restore it in settings</Link>}</p>}
 
         <div className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-line">
-          <div className="flex" role="tablist" aria-label="View">
+          <div aria-label="View" className="flex max-w-full overflow-x-auto" role="tablist">
             {VIEWS.map(([key, label, icon]) => <Link aria-selected={view === key} className="tab" key={key} role="tab" to={`${base}/${key}${window.location.search}`}><Icon className="size-4" name={icon} />{label}</Link>)}
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2 pb-2">
@@ -236,6 +242,7 @@ export default function ProjectPage({ projectKey, view }) {
             <MultiSelect label="Priority" onChange={(priority) => setFilter({ priority })} options={PRIORITIES.map((p) => ({ value: p.value, label: p.label, node: <Icon className="size-3.5" name="flag" style={{ color: p.color }} /> }))} values={filters.priority} />
             <MultiSelect label="Label" onChange={(labels) => setFilter({ labels })} options={pd.labels.map((l) => ({ value: l.id, label: l.name, node: <StatusDot color={l.color} /> }))} values={filters.labels} />
             <Select ariaLabel="Due" className={`btn ${filters.due !== 'any' ? 'border-[#86bc25] dark:border-[#86bc25]' : ''}`} onChange={(due) => setFilter({ due })} options={DUE_OPTIONS} value={filters.due}>{(cur) => <><Icon className="size-4" name="calendar" />{cur?.label}<Icon className="size-3.5 text-slate-400" name="chevronDown" /></>}</Select>
+            {pd.sprints.length > 0 && <Select ariaLabel="Sprint" className={`btn ${filters.sprint !== 'any' ? 'border-[#86bc25] dark:border-[#86bc25]' : ''}`} onChange={(sprint) => setFilter({ sprint })} options={[{ value: 'any', label: 'Any sprint' }, { value: 'active', label: 'Active sprint' }, { value: 'none', label: 'Backlog (no sprint)' }, ...pd.sprints.map((x) => ({ value: x.id, label: x.name }))]} value={filters.sprint}>{(cur) => <><Icon className="size-4" name="layers" />{cur?.label || 'Sprint'}<Icon className="size-3.5 text-slate-400" name="chevronDown" /></>}</Select>}
             <label className="flex items-center gap-2 px-2 text-sm"><input checked={filters.hideDone} className="size-4 accent-[#86bc25]" onChange={(e) => setFilter({ hideDone: e.target.checked })} type="checkbox" />Hide done</label>
             <label className="flex items-center gap-2 px-2 text-sm"><input checked={filters.showSubtasks} className="size-4 accent-[#86bc25]" onChange={(e) => setFilter({ showSubtasks: e.target.checked })} type="checkbox" />Show subtasks</label>
             {(count > 0 || filters.q) && <button className="btn btn-ghost ml-auto" onClick={() => setStored({ ...DEFAULT_FILTERS, groupBy: filters.groupBy, sortKey: filters.sortKey, sortDir: filters.sortDir })} type="button">Clear all</button>}
@@ -253,6 +260,8 @@ export default function ProjectPage({ projectKey, view }) {
           <>
             {view === 'list' && <ListView {...common} />}
             {view === 'board' && <BoardView {...common} />}
+            {view === 'backlog' && <BacklogView {...common} />}
+            {view === 'timeline' && <TimelineView {...common} />}
             {view === 'calendar' && <CalendarView {...common} />}
             {view === 'daily' && <DailyView {...common} />}
           </>

@@ -197,7 +197,7 @@ module.exports = function collabRoutes(pool) {
 
   router.post('/projects/:pid/views', wrap(async (req, res) => {
     const { project } = await projectAccess(pool, req.user, req.params.pid, 'member');
-    const body = validate(req.body, { name: v.str(1, 60), view: v.oneOf(['list', 'board', 'calendar', 'daily']), config: configSpec, shared: v.bool }, { required: ['name', 'view'] });
+    const body = validate(req.body, { name: v.str(1, 60), view: v.oneOf(['list', 'board', 'backlog', 'timeline', 'calendar', 'daily']), config: configSpec, shared: v.bool }, { required: ['name', 'view'] });
     const { rows } = await pool.query(
       'INSERT INTO saved_views (workspace_id, project_id, user_id, name, view, config, shared) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, name, view, config, shared, user_id AS "userId"',
       [project.workspace_id, project.id, req.user.id, body.name, body.view, JSON.stringify(body.config || {}), Boolean(body.shared)],

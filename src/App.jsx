@@ -13,7 +13,7 @@ import { useWorkspace, WorkspaceProvider } from './state/workspace.jsx';
 import ProjectPage from './views/ProjectPage.jsx';
 import Shell from './components/Shell.jsx';
 
-const VIEWS = ['list', 'board', 'calendar', 'daily'];
+const VIEWS = ['list', 'board', 'backlog', 'timeline', 'calendar', 'daily'];
 
 function Redirect({ to }) {
   const { navigate } = useRoute();

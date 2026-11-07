@@ -18,7 +18,8 @@ function keyFromName(name) {
 async function loadProjectBundle(db, projectId) {
   const { rows: statuses } = await db.query('SELECT id, name, category, color, position FROM statuses WHERE project_id = $1 ORDER BY position, name', [projectId]);
   const { rows: labels } = await db.query('SELECT id, name, color FROM labels WHERE project_id = $1 ORDER BY lower(name)', [projectId]);
-  return { statuses, labels };
+  const { rows: fields } = await db.query('SELECT id, name, type, options, position FROM custom_fields WHERE project_id = $1 ORDER BY position, name', [projectId]);
+  return { statuses, labels, fields };
 }
 
 const projectJson = (p) => ({

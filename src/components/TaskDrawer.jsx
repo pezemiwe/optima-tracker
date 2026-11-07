@@ -4,9 +4,11 @@ import Icon from './Icon.jsx';
 import Markdown from './Markdown.jsx';
 import MentionTextarea from './MentionTextarea.jsx';
 import { Checkbox, DateField, LabelSelect, PrioritySelect, StatusSelect } from './TaskBits.jsx';
-import { Avatar, LabelChip, Modal, Popover, Spinner, UserSelect, useConfirm, useEscape, useToast } from './ui.jsx';
+import { Avatar, LabelChip, Modal, Popover, Select, Spinner, UserSelect, useConfirm, useEscape, useToast } from './ui.jsx';
 import { describeActivity, mentionedIds } from '../lib/activity.mjs';
 import { toggleTaskLine } from '../lib/markdown.mjs';
+import { REPEAT_OPTIONS, repeatKey } from '../lib/repeat.mjs';
+import { describeRecurrence } from '../lib/recurrenceText.mjs';
 import { formatDuration, formatDay, parseDuration, timeAgo } from '../lib/dates.mjs';
 import { useRoute } from '../router.jsx';
 import { useAuth } from '../state/auth.jsx';
@@ -81,6 +83,7 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
   // so the current value cannot be used as the base: it may already contain someone else's change.
   const baseRef = useRef({ title: null, description: null });
   const [estimate, setEstimate] = useState('');
+  const [pointsText, setPointsText] = useState('');
   const [tab, setTab] = useState('all');
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
@@ -110,7 +113,7 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
 
   // Keep editable fields in step with the server unless the user is mid-edit.
   const t = detail?.task;
-  useEffect(() => { if (t) { setTitle(t.title); setEstimate(t.estimateMinutes == null ? '' : formatDuration(t.estimateMinutes)); } }, [t?.id, t?.title, t?.estimateMinutes]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (t) { setTitle(t.title); setEstimate(t.estimateMinutes == null ? '' : formatDuration(t.estimateMinutes)); setPointsText(t.points == null ? '' : String(t.points)); } }, [t?.id, t?.title, t?.estimateMinutes, t?.points]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (t && !descDirty) setDesc(t.description); }, [t?.id, t?.description, descDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = useCallback(async (changes) => {
@@ -154,6 +157,14 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
       await load();
     }
   }
+
+  async function savePoints() {
+    const next = pointsText.trim() === '' ? null : Math.max(0, Math.min(1000, parseInt(pointsText, 10) || 0));
+    if (next !== t.points) await update({ points: next });
+    else setPointsText(t.points == null ? '' : String(t.points));
+  }
+
+  const setField = (id, value) => update({ fields: { [id]: value } });
 
   async function saveEstimate() {
     let minutes;
@@ -440,6 +451,25 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
               <Prop label="Start date"><DateField ariaLabel="Start date" className="w-full [&_input]:w-full" disabled={!canWrite} max={t.dueDate || undefined} onChange={(startDate) => update({ startDate })} value={t.startDate} /></Prop>
               <Prop label="Due date"><DateField ariaLabel="Due date" className="w-full [&_input]:w-full" disabled={!canWrite} min={t.startDate || undefined} onChange={(dueDate) => update({ dueDate })} value={t.dueDate} /></Prop>
               <Prop label="Due time"><input aria-label="Due time" className="input h-8 text-xs" disabled={!canWrite || !t.dueDate} onChange={(e) => update({ dueTime: e.target.value || null })} type="time" value={t.dueTime || ''} /></Prop>
+              {!t.parentId && pd.sprints.some((x) => x.state !== 'completed' || x.id === t.sprintId) && (
+                <Prop label="Sprint"><Select ariaLabel="Sprint" className="btn btn-sm w-full justify-between" disabled={!canWrite} onChange={(sprintId) => update({ sprintId })} options={[{ value: null, label: 'Backlog' }, ...pd.sprints.filter((x) => x.state !== 'completed' || x.id === t.sprintId).map((x) => ({ value: x.id, label: x.name }))]} value={t.sprintId || null} /></Prop>
+              )}
+              <Prop label="Story points"><input aria-label="Story points" className="input h-8 text-xs" disabled={!canWrite} inputMode="numeric" onBlur={savePoints} onChange={(e) => setPointsText(e.target.value.replace(/\D/g, '').slice(0, 4))} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} placeholder="e.g. 3" value={pointsText} /></Prop>
+              <Prop label="Repeat">
+                <Select ariaLabel="Repeat" className="btn btn-sm w-full justify-between" disabled={!canWrite} onChange={(key) => update({ recurrence: REPEAT_OPTIONS.find((o) => o.key === key)?.value ?? null })} options={[...REPEAT_OPTIONS.map((o) => ({ value: o.key, label: o.label })), ...(repeatKey(t.recurrence).startsWith('custom') ? [{ value: repeatKey(t.recurrence), label: `Repeats ${describeRecurrence(t.recurrence)}` }] : [])]} value={repeatKey(t.recurrence)} />
+              </Prop>
+              {pd.fields.map((f) => {
+                const val = t.fields?.[f.id];
+                return (
+                  <Prop key={f.id} label={f.name}>
+                    {f.type === 'text' && <input aria-label={f.name} className="input h-8 text-xs" defaultValue={val ?? ''} disabled={!canWrite} key={`${f.id}-${val}`} maxLength={500} onBlur={(e) => { const next = e.target.value.trim(); if (next !== (val ?? '')) setField(f.id, next === '' ? null : next); }} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />}
+                    {f.type === 'number' && <input aria-label={f.name} className="input h-8 text-xs" defaultValue={val ?? ''} disabled={!canWrite} key={`${f.id}-${val}`} onBlur={(e) => { const raw = e.target.value.trim(); const next = raw === '' ? null : Number(raw); if (raw !== '' && !Number.isFinite(next)) { toast.error(`${f.name} must be a number.`); return; } if (next !== (val ?? null)) setField(f.id, next); }} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} type="number" />}
+                    {f.type === 'date' && <DateField ariaLabel={f.name} className="w-full [&_input]:w-full" disabled={!canWrite} onChange={(next) => setField(f.id, next)} value={val || null} />}
+                    {f.type === 'checkbox' && <label className="flex h-8 items-center gap-2 text-sm"><input aria-label={f.name} checked={val === true} className="size-4 accent-[#86bc25]" disabled={!canWrite} onChange={(e) => setField(f.id, e.target.checked ? true : null)} type="checkbox" />{val === true ? 'Yes' : 'No'}</label>}
+                    {f.type === 'select' && <Select ariaLabel={f.name} className="btn btn-sm w-full justify-between" disabled={!canWrite} onChange={(next) => setField(f.id, next)} options={[{ value: null, label: 'None' }, ...f.options.map((o) => ({ value: o, label: o }))]} value={val ?? null} />}
+                  </Prop>
+                );
+              })}
               <Prop label="Estimate"><input aria-label="Estimate" className="input h-8 text-xs" disabled={!canWrite} onBlur={saveEstimate} onChange={(e) => setEstimate(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} placeholder="e.g. 1h 30m" value={estimate} /></Prop>
               <div className="mt-4 grid gap-1.5 border-t border-line pt-4 text-xs muted">
                 <p className="flex justify-between"><span>Reporter</span><span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300"><Avatar size={16} user={detail.reporter} />{detail.reporter?.name || 'Unknown'}</span></p>
