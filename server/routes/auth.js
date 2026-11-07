@@ -3,13 +3,17 @@ const express = require('express');
 const { HttpError, wrap, v, validate, slugify } = require('../util');
 const { tx } = require('../db');
 const {
-  hashPassword, verifyPassword, checkPasswordStrength, sha256, createSession, requireAuth,
+  hashPassword, verifyPassword, checkPasswordStrength, sha256, newToken, createSession, requireAuth,
   clearSessionCookie, rateLimit,
 } = require('../auth');
 const { colorFor, logActivity, notify } = require('../services');
 const { importLegacy } = require('../legacy');
+const { resetEmail } = require('../emails');
+const { baseUrl } = require('../emailWorker');
 
-const publicUser = (u) => ({ id: u.id, email: u.email, name: u.name, color: u.color, theme: u.theme });
+const RESET_MINUTES = 60;
+
+const publicUser = (u) => ({ id: u.id, email: u.email, name: u.name, color: u.color, theme: u.theme, emailNotifications: u.email_notifications !== false });
 
 async function uniqueSlug(c, name) {
   const base = slugify(name);
@@ -46,14 +50,14 @@ async function sessionPayload(db, user) {
   return { user: publicUser(user), workspaces: ws, pendingInvites: inv };
 }
 
-module.exports = function authRoutes(pool) {
+module.exports = function authRoutes(pool, { mailer }) {
   const router = express.Router();
   const loginLimiter = rateLimit({ max: 10, windowMs: 15 * 60 * 1000, key: (req) => `${req.ip}|${String((req.body && req.body.email) || '').toLowerCase()}` });
   const registerLimiter = rateLimit({ max: 20, windowMs: 60 * 60 * 1000, key: (req) => req.ip });
 
   router.get('/auth/status', wrap(async (req, res) => {
     const { rows } = await pool.query('SELECT 1 FROM users WHERE password_hash IS NOT NULL LIMIT 1');
-    res.json({ needsSetup: rows.length === 0 });
+    res.json({ needsSetup: rows.length === 0, emailEnabled: mailer.enabled });
   }));
 
   router.get('/invites/:token', wrap(async (req, res) => {
@@ -154,9 +158,10 @@ module.exports = function authRoutes(pool) {
   }));
 
   router.patch('/auth/me', requireAuth, wrap(async (req, res) => {
-    const body = validate(req.body, { name: v.str(1, 80), theme: v.oneOf(['system', 'light', 'dark']), color: v.color });
+    const body = validate(req.body, { name: v.str(1, 80), theme: v.oneOf(['system', 'light', 'dark']), color: v.color, emailNotifications: v.bool });
     if (!Object.keys(body).length) throw new HttpError(400, 'Nothing to change.');
-    const sets = Object.keys(body).map((k, i) => `${k} = $${i + 2}`);
+    const columns = { name: 'name', theme: 'theme', color: 'color', emailNotifications: 'email_notifications' };
+    const sets = Object.keys(body).map((k, i) => `${columns[k]} = $${i + 2}`);
     const { rows } = await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, [req.user.id, ...Object.values(body)]);
     res.json({ user: publicUser(rows[0]) });
   }));
@@ -173,6 +178,65 @@ module.exports = function authRoutes(pool) {
       await c.query('DELETE FROM sessions WHERE user_id = $1 AND id <> $2', [req.user.id, req.sessionId]);
     });
     res.json({ ok: true });
+  }));
+
+  /* ---------- password reset ---------- */
+  const forgotLimiter = rateLimit({ max: 5, windowMs: 60 * 60 * 1000, key: (req) => `${req.ip}|${String((req.body && req.body.email) || '').toLowerCase()}` });
+  const resetLimiter = rateLimit({ max: 15, windowMs: 60 * 60 * 1000, key: (req) => req.ip });
+
+  async function issueReset(db, userId, createdBy, minutes) {
+    const token = newToken();
+    await db.query('UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [userId]);
+    await db.query(
+      "INSERT INTO password_resets (user_id, token_hash, created_by, expires_at) VALUES ($1,$2,$3, now() + ($4 || ' minutes')::interval)",
+      [userId, sha256(token), createdBy, String(minutes)],
+    );
+    return token;
+  }
+
+  /* Always answers the same way, so it cannot be used to discover which emails have accounts. */
+  router.post('/auth/forgot', forgotLimiter, wrap(async (req, res) => {
+    const body = validate(req.body, { email: v.email }, { required: ['email'] });
+    if (mailer.enabled) {
+      const { rows } = await pool.query('SELECT id, email FROM users WHERE lower(email) = $1 AND password_hash IS NOT NULL', [body.email]);
+      if (rows[0]) {
+        const token = await issueReset(pool, rows[0].id, null, RESET_MINUTES);
+        const link = `${baseUrl() || `${req.protocol}://${req.get('host')}`}/reset/${token}`;
+        mailer.send({ to: rows[0].email, ...resetEmail(link) }).catch((e) => console.error('Reset email failed:', e.message));
+      }
+    }
+    res.json({ ok: true, emailEnabled: mailer.enabled });
+  }));
+
+  async function loadReset(db, token) {
+    if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
+    const { rows } = await db.query(
+      'SELECT id, user_id FROM password_resets WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()',
+      [sha256(token)],
+    );
+    return rows[0] || null;
+  }
+
+  router.get('/auth/reset/:token', resetLimiter, wrap(async (req, res) => {
+    if (!(await loadReset(pool, req.params.token))) throw new HttpError(404, 'This reset link is invalid or has expired.', 'reset_invalid');
+    res.json({ valid: true });
+  }));
+
+  router.post('/auth/reset', resetLimiter, wrap(async (req, res) => {
+    const body = validate(req.body, { token: v.str(1, 100), password: (x) => x }, { required: ['token', 'password'] });
+    checkPasswordStrength(body.password);
+    const hash = await hashPassword(body.password);
+    const user = await tx(pool, async (c) => {
+      const reset = await loadReset(c, body.token);
+      if (!reset) throw new HttpError(400, 'This reset link is invalid or has expired.', 'reset_invalid');
+      await c.query('UPDATE password_resets SET used_at = now() WHERE id = $1', [reset.id]);
+      const { rows } = await c.query('UPDATE users SET password_hash = $2, last_login_at = now() WHERE id = $1 RETURNING *', [reset.user_id, hash]);
+      // Everyone signed in with the old password is signed out.
+      await c.query('DELETE FROM sessions WHERE user_id = $1', [reset.user_id]);
+      return rows[0];
+    });
+    await createSession(pool, req, res, user.id);
+    res.json(await sessionPayload(pool, user));
   }));
 
   /* A signed-in user accepts an invitation addressed to their email. */

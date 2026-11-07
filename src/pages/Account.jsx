@@ -56,6 +56,14 @@ export default function Account() {
         </section>
 
         <section className="surface mt-6 p-5">
+          <h2 className="font-semibold">Email notifications</h2>
+          <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm">
+            <input checked={user.emailNotifications} className="mt-0.5 size-4 accent-[#86bc25]" onChange={async (e) => { try { const r = await api.patch('/auth/me', { emailNotifications: e.target.checked }); updateUser(r.user); } catch (err) { toast.error(err.message); } }} type="checkbox" />
+            <span><span className="font-medium">Email me about assignments, mentions and activity on tasks I watch</span><span className="faint mt-0.5 block text-xs">Sent as one digest a couple of minutes after the activity, and only if your admin has set up email.</span></span>
+          </label>
+        </section>
+
+        <section className="surface mt-6 p-5">
           <h2 className="font-semibold">Change password</h2>
           <form className="mt-4 grid max-w-sm gap-4" onSubmit={changePassword}>
             <div><label className="field-label" htmlFor="pw-cur">Current password</label><input autoComplete="current-password" className="input" id="pw-cur" onChange={(e) => setPw((p) => ({ ...p, current: e.target.value }))} type="password" value={pw.current} /></div>

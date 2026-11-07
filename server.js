@@ -5,6 +5,8 @@
  */
 const { makePool, migrate } = require('./server/db');
 const { createApp } = require('./server/app');
+const { createMailer } = require('./server/mailer');
+const { startEmailWorker } = require('./server/emailWorker');
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -13,7 +15,10 @@ async function main() {
   const pool = makePool();
   pool.on('error', (e) => console.error('pg pool error', e.message));
   await migrate(pool);
-  createApp(pool).listen(PORT, '0.0.0.0', () => console.log(`Optima Work Tracker listening on ${PORT}.`));
+  const mailer = createMailer();
+  startEmailWorker(pool, mailer);
+  console.log(mailer.enabled ? 'Email is enabled.' : 'Email is not configured (SMTP_URL unset); invite and reset links are shown to admins.');
+  createApp(pool, { mailer }).listen(PORT, '0.0.0.0', () => console.log(`Optima Work Tracker listening on ${PORT}.`));
 }
 
 module.exports = { createApp, migrate, makePool };

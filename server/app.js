@@ -4,8 +4,9 @@ const path = require('path');
 const fs = require('fs');
 const { HttpError } = require('./util');
 const { authenticate, originCheck, requireJson } = require('./auth');
+const { createMailer } = require('./mailer');
 
-function createApp(pool) {
+function createApp(pool, { mailer = createMailer() } = {}) {
   const app = express();
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
@@ -26,8 +27,8 @@ function createApp(pool) {
   });
 
   app.use('/api', express.json({ limit: '256kb' }), originCheck, requireJson, authenticate(pool));
-  app.use('/api', require('./routes/auth')(pool));
-  app.use('/api', require('./routes/workspaces')(pool));
+  app.use('/api', require('./routes/auth')(pool, { mailer }));
+  app.use('/api', require('./routes/workspaces')(pool, { mailer }));
   app.use('/api', require('./routes/projects')(pool));
   app.use('/api', require('./routes/tasks')(pool));
   app.use('/api', require('./routes/collab')(pool));

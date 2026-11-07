@@ -19,8 +19,9 @@ export function AuthProvider({ children }) {
 
   const goAnonymous = useCallback(async () => {
     let needsSetup = false;
-    try { needsSetup = (await api.get('/auth/status')).needsSetup; } catch { /* keep default */ }
-    setState({ status: 'anon', user: null, workspaces: [], pendingInvites: [], needsSetup, error: null });
+    let emailEnabled = false;
+    try { ({ needsSetup, emailEnabled } = await api.get('/auth/status')); } catch { /* keep defaults */ }
+    setState({ status: 'anon', user: null, workspaces: [], pendingInvites: [], needsSetup, emailEnabled, error: null });
   }, []);
 
   const load = useCallback(async () => {

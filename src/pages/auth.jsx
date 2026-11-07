@@ -92,6 +92,7 @@ export function LoginPage({ inviteEmail, onDone, subtitle }) {
       <Field id="password" label="Password"><PasswordInput autoComplete="current-password" id="password" onChange={setPassword} value={password} /></Field>
       <FormError message={error} />
       <button className="btn btn-primary h-10" disabled={busy || !email || !password} type="submit">{busy ? <Spinner className="size-4" /> : 'Sign in'}</button>
+      {!inviteEmail && <Link className="text-center text-sm font-medium text-[#4a7a0a] hover:underline dark:text-[#a6d95a]" to="/forgot">Forgot your password?</Link>}
     </form>
   );
   if (onDone) return form;
@@ -250,6 +251,84 @@ export function WelcomePage() {
         <Field id="ws" label="Workspace name"><input autoFocus className="input h-10" id="ws" maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="e.g. My team" value={name} /></Field>
         <FormError message={error} />
         <button className="btn btn-primary h-10" disabled={busy || !name.trim()} type="submit">Create workspace</button>
+      </form>
+    </AuthLayout>
+  );
+}
+
+
+export function ForgotPage() {
+  const { emailEnabled } = useAuth();
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try { await api.post('/auth/forgot', { email }); setSent(true); } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  const back = <Link className="font-medium text-[#4a7a0a] hover:underline dark:text-[#a6d95a]" to="/login">Back to sign in</Link>;
+  if (!emailEnabled) {
+    return (
+      <AuthLayout footer={back} subtitle="Email is not set up for this workspace, so a reset link cannot be sent automatically." title="Reset your password">
+        <p className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">Ask a workspace admin to create a reset link for you. They can do it from Workspace settings, under Members. The link works once and lasts 24 hours.</p>
+      </AuthLayout>
+    );
+  }
+  return (
+    <AuthLayout footer={back} subtitle="Enter your email and we will send you a link to choose a new password." title="Reset your password">
+      {sent ? (
+        <p className="rounded-lg bg-[#86bc25]/10 px-3 py-3 text-sm" role="status">If an account exists for <b>{email}</b>, a reset link is on its way. It works for one hour.</p>
+      ) : (
+        <form className="grid gap-4" onSubmit={submit}>
+          <Field id="email" label="Email"><input autoComplete="email" autoFocus className="input h-10" id="email" onChange={(e) => setEmail(e.target.value)} type="email" value={email} /></Field>
+          <FormError message={error} />
+          <button className="btn btn-primary h-10" disabled={busy || !email} type="submit">{busy ? <Spinner className="size-4" /> : 'Send reset link'}</button>
+        </form>
+      )}
+    </AuthLayout>
+  );
+}
+
+export function ResetPage({ token }) {
+  const { signedIn } = useAuth();
+  const { navigate } = useRoute();
+  const [state, setState] = useState('checking'); // checking | valid | invalid
+  const [pw, setPw] = useState({ next: '', again: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.get(`/auth/reset/${encodeURIComponent(token)}`).then(() => setState('valid')).catch(() => setState('invalid'));
+  }, [token]);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (pw.next !== pw.again) { setError('The two passwords do not match.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const payload = await api.post('/auth/reset', { token, password: pw.next });
+      signedIn(payload);
+      navigate(defaultWorkspacePath(payload.workspaces), { replace: true });
+    } catch (err) { setError(err.message); setBusy(false); }
+  }
+
+  if (state === 'checking') return <AuthLayout title="Checking your link…"><Spinner /></AuthLayout>;
+  if (state === 'invalid') {
+    return <AuthLayout subtitle="This reset link is invalid, has already been used, or has expired." title="Link unavailable"><Link className="btn btn-primary w-full" to="/forgot">Get a new link</Link></AuthLayout>;
+  }
+  return (
+    <AuthLayout subtitle="Choose a new password. You will be signed in and every other device will be signed out." title="Choose a new password">
+      <form className="grid gap-4" onSubmit={submit}>
+        <Field id="pw1" label="New password"><PasswordInput autoComplete="new-password" id="pw1" onChange={(v) => setPw((p) => ({ ...p, next: v }))} placeholder="At least 8 characters" value={pw.next} /></Field>
+        <Field id="pw2" label="Repeat new password"><PasswordInput autoComplete="new-password" id="pw2" onChange={(v) => setPw((p) => ({ ...p, again: v }))} value={pw.again} /></Field>
+        <FormError message={error} />
+        <button className="btn btn-primary h-10" disabled={busy || pw.next.length < 8 || !pw.again} type="submit">{busy ? <Spinner className="size-4" /> : 'Set password and sign in'}</button>
       </form>
     </AuthLayout>
   );

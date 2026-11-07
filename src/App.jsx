@@ -6,7 +6,7 @@ import MyTasks from './pages/MyTasks.jsx';
 import Account from './pages/Account.jsx';
 import ProjectSettings from './pages/ProjectSettings.jsx';
 import WorkspaceSettings from './pages/WorkspaceSettings.jsx';
-import { defaultWorkspacePath, InvitePage, LoginPage, SetupPage, WelcomePage } from './pages/auth.jsx';
+import { defaultWorkspacePath, ForgotPage, InvitePage, LoginPage, ResetPage, SetupPage, WelcomePage } from './pages/auth.jsx';
 import { Link, matchPath, Router, useRoute } from './router.jsx';
 import { AuthProvider, useAuth } from './state/auth.jsx';
 import { useWorkspace, WorkspaceProvider } from './state/workspace.jsx';
@@ -77,8 +77,11 @@ function Routes() {
 
   const invite = matchPath('/invite/:token', path);
   if (invite) return <InvitePage token={invite.token} />;
+  const reset = matchPath('/reset/:token', path);
+  if (reset) return <ResetPage token={reset.token} />;
 
   if (!user) {
+    if (path === '/forgot') return <ForgotPage />;
     if (path === '/setup' || (needsSetup && path !== '/login')) return <SetupPage />;
     return <LoginPage />;
   }

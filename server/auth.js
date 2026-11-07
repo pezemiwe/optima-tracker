@@ -82,7 +82,7 @@ function authenticate(pool) {
       const token = parseCookies(req.headers.cookie)[COOKIE];
       if (token) {
         const { rows } = await pool.query(
-          `SELECT u.id, u.email, u.name, u.color, u.theme, s.id AS session_id, s.expires_at
+          `SELECT u.id, u.email, u.name, u.color, u.theme, u.email_notifications, s.id AS session_id, s.expires_at
              FROM sessions s JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = $1 AND s.expires_at > now()`,
           [sha256(token)],

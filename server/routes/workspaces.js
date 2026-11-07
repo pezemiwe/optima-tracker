@@ -4,6 +4,8 @@ const { HttpError, wrap, v, validate, slugify, ROLE_RANK } = require('../util');
 const { tx, touch } = require('../db');
 const { requireAuth, requireRole, sha256, newToken } = require('../auth');
 const { logActivity, notify } = require('../services');
+const { inviteEmail } = require('../emails');
+const { baseUrl } = require('../emailWorker');
 
 const INVITE_DAYS = 14;
 
@@ -22,7 +24,7 @@ async function ownerCount(c, workspaceId) {
   return rows[0].n;
 }
 
-module.exports = function workspaceRoutes(pool) {
+module.exports = function workspaceRoutes(pool, { mailer }) {
   const router = express.Router();
   router.use(requireAuth);
 
@@ -144,6 +146,25 @@ module.exports = function workspaceRoutes(pool) {
     res.json({ ok: true });
   }));
 
+  /* Admin fallback for people who cannot receive email: a one-time reset link to hand over. */
+  router.post('/workspaces/:wid/members/:uid/reset-link', need('admin'), wrap(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT u.id, u.name, u.password_hash, m.role FROM members m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = $1 AND m.user_id = $2`,
+      [req.workspace.id, req.params.uid],
+    );
+    const target = rows[0];
+    if (!target) throw new HttpError(404, 'Member not found.', 'not_found');
+    if (!target.password_hash) throw new HttpError(400, 'This person has not signed up yet. Send them an invitation instead.');
+    if (target.role === 'owner' && req.workspace.role !== 'owner') throw new HttpError(403, 'Only an owner can reset an owner password.', 'forbidden');
+    const token = newToken();
+    await tx(pool, async (c) => {
+      await c.query('UPDATE password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [target.id]);
+      await c.query("INSERT INTO password_resets (user_id, token_hash, created_by, expires_at) VALUES ($1,$2,$3, now() + interval '24 hours')", [target.id, sha256(token), req.user.id]);
+      await logActivity(c, { workspaceId: req.workspace.id, actorId: req.user.id, action: 'member.reset_link', detail: { name: target.name } });
+    });
+    res.status(201).json({ path: `/reset/${token}`, expiresInHours: 24 });
+  }));
+
   /* ---------- invites ---------- */
   router.get('/workspaces/:wid/invites', need('admin'), wrap(async (req, res) => {
     const { rows } = await pool.query(
@@ -185,7 +206,12 @@ module.exports = function workspaceRoutes(pool) {
       return rows[0];
     });
     // The raw token is shown once; only its hash is stored.
-    res.status(201).json({ invite: out, token, path: `/invite/${token}` });
+    let emailed = false;
+    if (mailer.enabled) {
+      const link = `${baseUrl() || `${req.protocol}://${req.get('host')}`}/invite/${token}`;
+      try { await mailer.send({ to: body.email, ...inviteEmail({ workspaceName: req.workspace.name, inviterName: req.user.name, role, link }) }); emailed = true; } catch (e) { console.error('Invite email failed:', e.message); }
+    }
+    res.status(201).json({ invite: out, token, path: `/invite/${token}`, emailed });
   }));
 
   router.delete('/workspaces/:wid/invites/:id', need('admin'), wrap(async (req, res) => {

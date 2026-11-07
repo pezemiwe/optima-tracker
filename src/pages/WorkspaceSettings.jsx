@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import Icon from '../components/Icon.jsx';
 import Shell from '../components/Shell.jsx';
-import { Avatar, Select, TypeToConfirm, useConfirm, useToast } from '../components/ui.jsx';
+import { Avatar, Modal, Select, TypeToConfirm, useConfirm, useToast } from '../components/ui.jsx';
 import { formatDay } from '../lib/dates.mjs';
 import { useQueryParam, useRoute } from '../router.jsx';
 import { useAuth } from '../state/auth.jsx';
@@ -90,6 +90,7 @@ function Members() {
   const [form, setForm] = useState({ email: '', role: 'member', placeholderUserId: null });
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState(null);
+  const [resetLink, setResetLink] = useState(null);
 
   const loadInvites = useCallback(() => {
     if (isAdmin) api.get(`/workspaces/${workspace.id}/invites`).then((r) => setInvites(r.invites)).catch(() => {});
@@ -104,7 +105,7 @@ function Members() {
     setBusy(true);
     try {
       const r = await api.post(`/workspaces/${workspace.id}/invites`, { email: form.email, role: form.role, ...(form.placeholderUserId ? { placeholderUserId: form.placeholderUserId } : {}) });
-      setCreated({ email: form.email, link: `${window.location.origin}${r.path}` });
+      setCreated({ email: form.email, link: `${window.location.origin}${r.path}`, emailed: r.emailed });
       setForm({ email: '', role: 'member', placeholderUserId: null });
       loadInvites();
       await sync();
@@ -117,6 +118,12 @@ function Members() {
     const ok = await confirm({ title: `Remove ${m.name}?`, message: 'Their tasks become unassigned. Their comments and history stay.', confirmLabel: 'Remove', danger: true });
     if (!ok) return;
     try { await api.del(`/workspaces/${workspace.id}/members/${m.id}`); await sync(); } catch (err) { toast.error(err.message); }
+  }
+  async function makeResetLink(m) {
+    try {
+      const r = await api.post(`/workspaces/${workspace.id}/members/${m.id}/reset-link`);
+      setResetLink({ name: m.name, link: `${window.location.origin}${r.path}` });
+    } catch (err) { toast.error(err.message); }
   }
   async function revoke(i) {
     try { await api.del(`/workspaces/${workspace.id}/invites/${i.id}`); loadInvites(); } catch (err) { toast.error(err.message); }
@@ -138,7 +145,7 @@ function Members() {
           {placeholders.length > 0 && <p className="faint mt-2 text-xs">Names imported from the close-out checklist can be claimed, so their existing tasks move to the real account.</p>}
           {created && (
             <div className="mt-4 rounded-lg border border-[#86bc25]/50 bg-[#86bc25]/10 p-3 text-sm" role="status">
-              <p className="font-medium">Invite for {created.email} is ready. Copy the link now. It is shown only once.</p>
+              <p className="font-medium">{created.emailed ? `We emailed ${created.email}. ` : ''}Invite for {created.email} is ready. {created.emailed ? 'You can also share this link; it is shown only once.' : 'Copy the link now. It is shown only once.'}</p>
               <div className="mt-2 flex gap-2"><input aria-label="Invite link" className="input font-mono text-xs" onFocus={(e) => e.target.select()} readOnly value={created.link} /><button className="btn" onClick={() => copy(created.link)} type="button"><Icon className="size-4" name="copy" />Copy</button></div>
             </div>
           )}
@@ -174,12 +181,19 @@ function Members() {
                 {locked
                   ? <span className="chip capitalize">{m.role}</span>
                   : <Select ariaLabel={`Role for ${m.name}`} className="btn btn-sm w-28 justify-between" onChange={(role) => setRole(m, role)} options={roleOptions} value={m.role} />}
+                {isAdmin && !self && !m.isPlaceholder && !(m.role === 'owner' && !isOwner) && <button aria-label={`Create a password reset link for ${m.name}`} className="btn btn-sm" onClick={() => makeResetLink(m)} type="button">Reset link</button>}
                 {isAdmin && !self && !(m.role === 'owner' && !isOwner) && <button aria-label={`Remove ${m.name}`} className="icon-btn" onClick={() => remove(m)} type="button"><Icon name="trash" /></button>}
               </li>
             );
           })}
         </ul>
       </Section>
+      {resetLink && (
+        <Modal footer={<button className="btn" onClick={() => setResetLink(null)} type="button">Done</button>} onClose={() => setResetLink(null)} size="sm" title={`Password reset for ${resetLink.name}`}>
+          <p className="muted text-sm">Send this link to {resetLink.name}. It works once and expires in 24 hours. Anyone with the link can set the password, so share it privately.</p>
+          <div className="mt-3 flex gap-2"><input aria-label="Reset link" className="input font-mono text-xs" onFocus={(e) => e.target.select()} readOnly value={resetLink.link} /><button className="btn" onClick={() => copy(resetLink.link)} type="button"><Icon className="size-4" name="copy" />Copy</button></div>
+        </Modal>
+      )}
     </>
   );
 }

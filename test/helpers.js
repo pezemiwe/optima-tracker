@@ -8,13 +8,13 @@ const { createApp } = require('../server/app');
 
 const URL_ = process.env.TEST_DATABASE_URL || 'postgres://postgres@localhost:5433/optima_test';
 
-async function boot() {
+async function boot({ mailer } = {}) {
   const pool = makePool(URL_);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  const server = await new Promise((resolve) => { const s = createApp(pool).listen(0, '127.0.0.1', () => resolve(s)); });
+  const server = await new Promise((resolve) => { const s = createApp(pool, mailer ? { mailer } : undefined).listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  return { pool, server, base, close: async () => { server.close(); await pool.end(); } };
+  return { pool, server, base, mailer, close: async () => { server.close(); await pool.end(); } };
 }
 
 /* A tiny HTTP client that keeps its own cookie jar, like a browser tab. */
