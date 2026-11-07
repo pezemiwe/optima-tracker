@@ -4,7 +4,7 @@ import Icon from './Icon.jsx';
 import Markdown from './Markdown.jsx';
 import MentionTextarea from './MentionTextarea.jsx';
 import { Checkbox, DateField, LabelSelect, PrioritySelect, StatusSelect } from './TaskBits.jsx';
-import { Avatar, LabelChip, Popover, Spinner, UserSelect, useConfirm, useEscape, useToast } from './ui.jsx';
+import { Avatar, LabelChip, Modal, Popover, Spinner, UserSelect, useConfirm, useEscape, useToast } from './ui.jsx';
 import { describeActivity, mentionedIds } from '../lib/activity.mjs';
 import { toggleTaskLine } from '../lib/markdown.mjs';
 import { formatDuration, formatDay, parseDuration, timeAgo } from '../lib/dates.mjs';
@@ -76,6 +76,10 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
   const [uploading, setUploading] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const [relForm, setRelForm] = useState(null); // { kind, q, results }
+  const [conflict, setConflict] = useState(null); // { field, mine, theirs }
+  // What the text was when this person started editing. The panel refreshes itself from the server while open,
+  // so the current value cannot be used as the base: it may already contain someone else's change.
+  const baseRef = useRef({ title: null, description: null });
   const [estimate, setEstimate] = useState('');
   const [tab, setTab] = useState('all');
   const [comment, setComment] = useState('');
@@ -116,10 +120,39 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
     } catch { /* toast shown by the action */ }
   }, [actions, taskId, load]);
 
+  /* Saves title or description with the text we started from, so a clash with someone else's edit is caught. */
+  async function saveField(field, value, { force = false } = {}) {
+    try {
+      const base = baseRef.current[field] ?? t[field];
+      await api.patch(`/tasks/${taskId}`, { [field]: value, ...(force ? {} : { base: { [field]: base } }) });
+      baseRef.current[field] = null;
+      await pd.afterWrite();
+      await load();
+      return true;
+    } catch (e) {
+      if (e.code === 'conflict') { setConflict({ field, mine: value, theirs: e.data.current[field] }); return false; }
+      toast.error(e.message);
+      await load();
+      return false;
+    }
+  }
+
   async function saveDescription() {
     if (!descDirty) return;
-    await update({ description: desc });
-    setDescDirty(false);
+    if (await saveField('description', desc)) setDescDirty(false);
+  }
+
+  async function resolveConflict(choice) {
+    const c = conflict;
+    setConflict(null);
+    baseRef.current[c.field] = null;
+    if (choice === 'mine') {
+      await saveField(c.field, c.mine, { force: true });
+      if (c.field === 'description') setDescDirty(false);
+    } else {
+      if (c.field === 'description') { setDescDirty(false); setEditingDesc(false); } else setTitle(c.theirs);
+      await load();
+    }
   }
 
   async function saveEstimate() {
@@ -228,7 +261,7 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
         {detail && (
           <div className="grid flex-1 overflow-y-auto md:grid-cols-[minmax(0,1fr)_280px]">
             <div className="min-w-0 p-5 md:overflow-y-auto md:p-6">
-              <input aria-label="Title" className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-2xl font-semibold tracking-tight hover:border-slate-200 focus:border-slate-300 focus:outline-none dark:hover:border-[#343b47] dark:focus:border-[#414957]" disabled={!canWrite} maxLength={300} onBlur={() => { const next = title.trim(); if (!next) setTitle(t.title); else if (next !== t.title) update({ title: next }); }} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} value={title} />
+              <input aria-label="Title" onFocus={() => { baseRef.current.title = t.title; }} className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-2xl font-semibold tracking-tight hover:border-slate-200 focus:border-slate-300 focus:outline-none dark:hover:border-[#343b47] dark:focus:border-[#414957]" disabled={!canWrite} maxLength={300} onBlur={() => { const next = title.trim(); if (!next) setTitle(t.title); else if (next !== t.title) saveField('title', next); }} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} value={title} />
 
               <div className="mt-4">
                 <div className="flex items-center px-2"><p className="field-label !mb-0">Description</p><span className="faint ml-2 text-[11px]">Markdown supported</span>
@@ -236,7 +269,7 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
                 </div>
                 {(editingDesc || !desc.trim()) && canWrite ? (
                   <>
-                    <textarea aria-label="Description" autoFocus={editingDesc} className="input mt-1.5 min-h-32 resize-y font-mono text-[13px]" maxLength={20000} onBlur={async () => { await saveDescription(); if (desc.trim()) setEditingDesc(false); }} onChange={(e) => { setDesc(e.target.value); setDescDirty(true); }} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveDescription().then(() => desc.trim() && setEditingDesc(false)); } }} placeholder="Add details, context or acceptance criteria. Use - [ ] for a checklist." value={desc} />
+                    <textarea aria-label="Description" autoFocus={editingDesc} className="input mt-1.5 min-h-32 resize-y font-mono text-[13px]" maxLength={20000} onBlur={async () => { await saveDescription(); if (desc.trim()) setEditingDesc(false); }} onChange={(e) => { if (!descDirty) baseRef.current.description = t.description; setDesc(e.target.value); setDescDirty(true); setEditingDesc(true); }} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveDescription().then(() => desc.trim() && setEditingDesc(false)); } }} placeholder="Add details, context or acceptance criteria. Use - [ ] for a checklist." value={desc} />
                     {descDirty && <p className="faint mt-1 px-1 text-xs">Unsaved changes. Click outside the box or press Ctrl+Enter to save.</p>}
                   </>
                 ) : (
@@ -421,6 +454,25 @@ export default function TaskDrawer({ pd, actions, number, onClose, canWrite: can
           </div>
         )}
       </aside>
+      {conflict && (
+        <Modal
+          footer={(
+            <>
+              <button className="btn" onClick={() => setConflict(null)} type="button">Keep editing</button>
+              <button className="btn" onClick={() => resolveConflict('theirs')} type="button">Use their version</button>
+              <button className="btn btn-primary" onClick={() => resolveConflict('mine')} type="button">Overwrite with mine</button>
+            </>
+          )}
+          onClose={() => setConflict(null)}
+          title={`Someone else changed the ${conflict.field}`}
+        >
+          <p className="muted text-sm">While you were editing, another person saved a different {conflict.field}. Choose which one to keep.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div><p className="field-label">Their version (saved)</p><pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-slate-50 p-3 text-xs dark:bg-[#12151a]">{conflict.theirs || '(empty)'}</pre></div>
+            <div><p className="field-label">Your version</p><pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[#86bc25]/50 bg-[#86bc25]/5 p-3 text-xs">{conflict.mine || '(empty)'}</pre></div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

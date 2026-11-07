@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import Icon from '../components/Icon.jsx';
 import Shell from '../components/Shell.jsx';
 import TaskDrawer from '../components/TaskDrawer.jsx';
-import { Avatar, EmptyState, Modal, MultiSelect, Popover, Select, Spinner, StatusDot, useConfirm, useLocalStorage, useToast } from '../components/ui.jsx';
+import { Avatar, EmptyState, KeyBadge, Modal, MultiSelect, Popover, Select, Spinner, StatusDot, useConfirm, useLocalStorage, useToast } from '../components/ui.jsx';
 import { PrioritySelect, StatusSelect } from '../components/TaskBits.jsx';
 import { UserSelect } from '../components/ui.jsx';
 import { formatDuration, toISODate } from '../lib/dates.mjs';
@@ -190,7 +190,7 @@ export default function ProjectPage({ projectKey, view }) {
     <Shell crumbs={crumbs}>
       <div className="mx-auto max-w-[1600px] px-4 py-6 lg:px-8">
         <div className="flex flex-wrap items-start gap-4">
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl text-sm font-bold text-white" style={{ background: pd.project.color }}>{pd.project.key.slice(0, 3)}</span>
+          <KeyBadge className="!rounded-xl" project={pd.project} size={44} />
           <div className="min-w-0 flex-1">
             <h1 className="page-title break-words">{pd.project.name}</h1>
             {pd.project.description && <p className="muted mt-1 max-w-3xl text-sm">{pd.project.description}</p>}
@@ -244,6 +244,7 @@ export default function ProjectPage({ projectKey, view }) {
 
         <p aria-live="polite" className="faint mb-3 mt-3 text-xs">
           Showing {visible.length} of {filters.showSubtasks || count || filters.q ? pd.tasks.length : pd.tasks.filter((t) => !t.parentId).length} tasks
+          {pd.loadingMore && <span className="ml-2 inline-flex items-center gap-1.5"><Spinner className="size-3" />Loading the rest ({pd.tasks.length}{pd.total ? ` of ${pd.total}` : ''})…</span>}
         </p>
 
         {!pd.tasks.length ? (

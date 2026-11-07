@@ -1,11 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { BlockedBadge, DueBadge, LabelList, SubtaskProgress, TaskCounters } from '../components/TaskBits.jsx';
 import { Avatar, PriorityIcon, StatusDot } from '../components/ui.jsx';
 import { positionBetween } from '../lib/filters.mjs';
 import { useWorkspace } from '../state/workspace.jsx';
 
-function Card({ task, pd, canWrite, dragging, onOpen, onDragStart, onDragEnd, active }) {
+function Card({ task, pd, canWrite, dragging, onOpen, onDragStart, onDragEnd, active, onKeyMove }) {
   const { memberById } = useWorkspace();
   const done = pd.statusById.get(task.statusId)?.category === 'done';
   const assignee = task.assigneeId ? memberById.get(task.assigneeId) : null;
@@ -18,7 +18,12 @@ function Card({ task, pd, canWrite, dragging, onOpen, onDragStart, onDragEnd, ac
       onClick={() => onOpen(task)}
       onDragEnd={onDragEnd}
       onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', task.id); onDragStart(task); }}
-      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(task); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && e.target === e.currentTarget) onOpen(task);
+        // Keyboard alternative to dragging: Alt + arrow keys move the card to the neighbouring column.
+        else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && canWrite) { e.preventDefault(); onKeyMove(task, e.key === 'ArrowLeft' ? -1 : 1); }
+      }}
+      aria-describedby="board-keys"
       tabIndex={0}
     >
       <div className="flex items-center gap-2">
@@ -38,12 +43,34 @@ function Card({ task, pd, canWrite, dragging, onOpen, onDragStart, onDragEnd, ac
   );
 }
 
+/* Columns draw 100 cards at a time so a project with thousands of tasks stays fast. */
+const PAGE = 100;
+
 export default function BoardView({ tasks, pd, actions, canWrite, onOpen, activeNumber, quickDefaults = {} }) {
   const [dragId, setDragId] = useState(null);
   const [target, setTarget] = useState(null); // { statusId, beforeId }
   const [adding, setAdding] = useState(null); // statusId whose quick-add is open
+  const [limits, setLimits] = useState({});
   const [title, setTitle] = useState('');
   const dragged = useRef(null);
+  const [announcement, setAnnouncement] = useState('');
+  const [refocus, setRefocus] = useState(null);
+
+  // After a keyboard move the card re-renders in another column, so put focus back on it.
+  useEffect(() => {
+    if (!refocus) return;
+    document.querySelector(`[data-task-id="${refocus}"]`)?.focus();
+    setRefocus(null);
+  }, [refocus, tasks]);
+
+  function keyMove(task, dir) {
+    const idx = pd.statuses.findIndex((s) => s.id === task.statusId);
+    const next = pd.statuses[idx + dir];
+    if (!next) { setAnnouncement(`${task.projectKey}-${task.number} is already in the ${dir < 0 ? 'first' : 'last'} column`); return; }
+    setAnnouncement(`Moved ${task.projectKey}-${task.number} to ${next.name}`);
+    setRefocus(task.id);
+    actions.updateOptimistic(task.id, { statusId: next.id }).catch(() => {});
+  }
 
   const columns = useMemo(() => pd.statuses.map((s) => ({
     ...s, tasks: tasks.filter((t) => t.statusId === s.id).sort((a, b) => a.position - b.position || a.number - b.number),
@@ -90,6 +117,8 @@ export default function BoardView({ tasks, pd, actions, canWrite, onOpen, active
 
   return (
     <div className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-4">
+      <p className="sr-only" id="board-keys">Press Enter to open. Hold Alt and press the left or right arrow to move this card to another column.</p>
+      <p aria-live="polite" className="sr-only" role="status">{announcement}</p>
       {columns.map((column) => (
         <section
           aria-label={`${column.name} column`}
@@ -107,15 +136,18 @@ export default function BoardView({ tasks, pd, actions, canWrite, onOpen, active
             {canWrite && !pd.project?.archived && <button aria-label={`Add task to ${column.name}`} className="icon-btn ml-auto size-7" onClick={() => { setAdding(adding === column.id ? null : column.id); setTitle(''); }} type="button"><Icon name="add" /></button>}
           </header>
           <div className="grid min-h-12 flex-1 content-start gap-2">
-            {column.tasks.map((task) => (
+            {column.tasks.slice(0, limits[column.id] ?? PAGE).map((task) => (
               <div key={task.id}>
                 {target?.statusId === column.id && target.beforeId === task.id && <div aria-hidden="true" className="mb-2 h-1 rounded bg-[#86bc25]" />}
-                <Card active={task.number === activeNumber} canWrite={canWrite} dragging={dragId === task.id} onDragEnd={clear} onDragStart={(t) => { dragged.current = t; setDragId(t.id); }} onOpen={onOpen} pd={pd} task={task} />
+                <Card active={task.number === activeNumber} canWrite={canWrite} dragging={dragId === task.id} onDragEnd={clear} onDragStart={(t) => { dragged.current = t; setDragId(t.id); }} onKeyMove={keyMove} onOpen={onOpen} pd={pd} task={task} />
               </div>
             ))}
+            {column.tasks.length > (limits[column.id] ?? PAGE) && (
+              <button className="btn btn-sm w-full" onClick={() => setLimits((l) => ({ ...l, [column.id]: (l[column.id] ?? PAGE) + PAGE }))} type="button">Show {Math.min(PAGE, column.tasks.length - (limits[column.id] ?? PAGE))} more ({column.tasks.length - (limits[column.id] ?? PAGE)} hidden)</button>
+            )}
             {target?.statusId === column.id && !target.beforeId && column.tasks.some((t) => t.id !== dragId) && <div aria-hidden="true" className="h-1 rounded bg-[#86bc25]" />}
             {!column.tasks.length && (
-              <p className={`grid h-16 place-items-center rounded-lg border border-dashed text-xs text-slate-400 ${target?.statusId === column.id ? 'border-[#86bc25]' : 'border-slate-300 dark:border-[#2b313b]'}`}>{canWrite ? 'Drop a task here' : 'No tasks'}</p>
+              <p className={`grid h-16 place-items-center rounded-lg border border-dashed text-xs text-slate-600 dark:text-slate-400 ${target?.statusId === column.id ? 'border-[#86bc25]' : 'border-slate-300 dark:border-[#2b313b]'}`}>{canWrite ? 'Drop a task here' : 'No tasks'}</p>
             )}
           </div>
           {adding === column.id && (
@@ -124,7 +156,7 @@ export default function BoardView({ tasks, pd, actions, canWrite, onOpen, active
             </form>
           )}
           {canWrite && !pd.project?.archived && adding !== column.id && (
-            <button className="mt-2 flex h-8 items-center gap-2 rounded-lg px-2 text-xs text-slate-500 hover:bg-slate-200/60 dark:hover:bg-[#1b2028]" onClick={() => { setAdding(column.id); setTitle(''); }} type="button"><Icon className="size-3.5" name="add" />Add task</button>
+            <button className="mt-2 flex h-8 items-center gap-2 rounded-lg px-2 text-xs text-slate-600 hover:bg-slate-200/60 dark:text-slate-300 dark:hover:bg-[#1b2028]" onClick={() => { setAdding(column.id); setTitle(''); }} type="button"><Icon className="size-3.5" name="add" />Add task</button>
           )}
         </section>
       ))}

@@ -65,11 +65,13 @@ export default function CalendarView({ tasks, pd, actions, canWrite, onOpen }) {
           <button className="btn btn-sm" onClick={() => setAnchor(today)} type="button">Today</button>
           <button aria-label="Next month" className="icon-btn" onClick={() => setAnchor((a) => shiftMonth(a, 1))} type="button"><Icon name="chevronRight" /></button>
         </div>
-        <div className="grid grid-cols-7 border-b border-line text-center text-[11px] font-semibold uppercase tracking-wider faint">
-          {WEEKDAYS.map((d) => <div className="py-2" key={d}>{d}</div>)}
+        <div aria-label={`Calendar, ${formatMonth(anchor)}`} role="grid">
+        <div className="grid grid-cols-7 border-b border-line text-center text-[11px] font-semibold uppercase tracking-wider faint" role="row">
+          {WEEKDAYS.map((d) => <div className="py-2" key={d} role="columnheader">{d}</div>)}
         </div>
-        <div className="grid grid-cols-7" role="grid">
-          {grid.map((cell) => {
+        {Array.from({ length: 6 }, (_, w) => (
+        <div className="grid grid-cols-7" key={w} role="row">
+          {grid.slice(w * 7, w * 7 + 7).map((cell) => {
             const list = byDay.get(cell.date) || [];
             const shown = list.slice(0, 3);
             const isToday = cell.date === today;
@@ -103,6 +105,8 @@ export default function CalendarView({ tasks, pd, actions, canWrite, onOpen }) {
               </div>
             );
           })}
+        </div>
+        ))}
         </div>
       </div>
       <aside aria-label="Tasks without a due date" className="surface h-fit p-3">

@@ -178,13 +178,37 @@ module.exports = function taskRoutes(pool) {
   const router = express.Router();
   router.use(requireAuth);
 
+  /*
+   * Tasks of one project in board order. Without `limit` everything is returned (up to 10,000).
+   * With `limit` (max 2,000) the response carries `next`, a cursor to pass as `after` for the following page.
+   */
   router.get('/projects/:pid/tasks', wrap(async (req, res) => {
     const { project } = await projectAccess(pool, req.user, req.params.pid, 'viewer');
+    const paged = req.query.limit !== undefined;
+    const limit = paged ? Math.min(Math.max(parseInt(req.query.limit, 10) || 0, 1), 2000) : 10000;
+    const params = [req.user.id, project.id];
+    let after = '';
+    if (req.query.after) {
+      const m = /^(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?):(\d+)$/i.exec(String(req.query.after));
+      if (!m) throw new HttpError(400, 'after is not a valid cursor.');
+      params.push(Number(m[1]), Number(m[2]));
+      after = 'AND (t.position, t.number) > ($3, $4)';
+    }
+    params.push(limit + 1);
     const { rows } = await pool.query(
-      `SELECT ${TASK_COLUMNS} ${TASK_FROM} WHERE t.project_id = $2 ORDER BY t.position, t.number LIMIT 10000`,
-      [req.user.id, project.id],
+      `SELECT ${TASK_COLUMNS} ${TASK_FROM} WHERE t.project_id = $2 ${after} ORDER BY t.position, t.number LIMIT $${params.length}`,
+      params,
     );
-    res.json({ tasks: rows });
+    const more = rows.length > limit;
+    const page = more ? rows.slice(0, limit) : rows;
+    const last = page[page.length - 1];
+    const body = { tasks: page };
+    if (paged) body.next = more && last ? `${last.position}:${last.number}` : null;
+    if (paged && !req.query.after) {
+      const { rows: c } = await pool.query('SELECT count(*)::int AS n FROM tasks WHERE project_id = $1', [project.id]);
+      body.total = c[0].n;
+    }
+    res.json(body);
   }));
 
   /* Dependency edges inside one project, for drawing arrows on the timeline. */
@@ -285,7 +309,10 @@ module.exports = function taskRoutes(pool) {
 
   router.patch('/tasks/:tid', wrap(async (req, res) => {
     const { task } = await taskAccess(pool, req.user, req.params.tid, 'member');
-    const body = validate(req.body, taskSpec);
+    // `base` is what the editor started from; it is checked, never stored.
+    const { base, ...fields } = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const body = validate(fields, taskSpec);
+    const baseValues = base === undefined ? {} : validate(base, { title: v.text(300), description: v.text(20000) });
     if (!Object.keys(body).length) throw new HttpError(400, 'Nothing to change.');
     const { rows } = await pool.query('SELECT * FROM projects WHERE id = $1', [task.project_id]);
     const project = rows[0];
@@ -294,6 +321,13 @@ module.exports = function taskRoutes(pool) {
       // Re-read inside the transaction so concurrent edits diff against fresh values.
       const { rows: fresh } = await c.query('SELECT * FROM tasks WHERE id = $1 FOR UPDATE', [task.id]);
       if (!fresh[0]) throw new HttpError(404, 'Not found.', 'not_found');
+      // Three-way check: it is a conflict only if someone else changed this very field to something different from what we are saving.
+      const conflicts = ['title', 'description'].filter((f) => f in body && f in baseValues && fresh[0][f] !== baseValues[f] && fresh[0][f] !== body[f]);
+      if (conflicts.length) {
+        const err = new HttpError(409, `Someone else changed the ${conflicts.join(' and ')} while you were editing.`, 'conflict');
+        err.extra = { conflicts, current: { title: fresh[0].title, description: fresh[0].description, updatedAt: fresh[0].updated_at } };
+        throw err;
+      }
       await applyChanges(c, { user: req.user, task: fresh[0], project, changes: body });
       await touch(c, project.workspace_id);
     });

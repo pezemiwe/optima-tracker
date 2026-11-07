@@ -1,5 +1,6 @@
 'use strict';
 const express = require('express');
+const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const { HttpError } = require('./util');
@@ -21,6 +22,9 @@ function createApp(pool, { mailer = createMailer() } = {}) {
     if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
     next();
   });
+
+  // JSON task lists compress about 10x, which matters most on slow connections.
+  app.use(compression({ threshold: 1024 }));
 
   app.get('/healthz', async (req, res) => {
     try { await pool.query('SELECT 1'); res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); }
@@ -53,7 +57,7 @@ function createApp(pool, { mailer = createMailer() } = {}) {
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, code: err.code });
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, code: err.code, ...(err.extra || {}) });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.', code: 'invalid' });
     if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Request is too large.', code: 'too_large' });
     // Postgres: bad id format, duplicate, missing reference, check violation.

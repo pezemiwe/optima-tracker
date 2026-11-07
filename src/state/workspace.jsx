@@ -84,16 +84,37 @@ export function useProjectData(projectKey) {
 
   useEffect(() => { setData(null); setError(null); }, [projectId]);
 
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState(null);
+  const hasData = useRef(false);
+  useEffect(() => { hasData.current = Boolean(data); }, [data]);
+
+  /* Loads the project, then its tasks a page at a time. The first load shows tasks as soon as page one arrives. */
   const load = useCallback(async () => {
     if (!projectId) return;
     const mine = ++seq.current;
+    const stale = () => mine !== seq.current; // a newer request superseded this one
     try {
-      const [p, t] = await Promise.all([api.get(`/projects/${projectId}`), api.get(`/projects/${projectId}/tasks`)]);
-      if (mine !== seq.current) return; // a newer request superseded this one
-      setData({ project: p.project, role: p.role, statuses: p.statuses, labels: p.labels, tasks: t.tasks });
+      const p = await api.get(`/projects/${projectId}`);
+      if (stale()) return;
+      const progressive = !hasData.current;
+      let tasks = [];
+      let after = '';
+      for (;;) {
+        const t = await api.get(`/projects/${projectId}/tasks?limit=500${after}`);
+        if (stale()) return;
+        tasks = tasks.concat(t.tasks);
+        if (t.total !== undefined) setTotal(t.total);
+        const done = !t.next;
+        // On refresh keep the old data until everything is in, so the screen never flickers back to a partial list.
+        if (progressive || done) setData({ project: p.project, role: p.role, statuses: p.statuses, labels: p.labels, tasks });
+        setLoadingMore(!done);
+        if (done) break;
+        after = `&after=${encodeURIComponent(t.next)}`;
+      }
       setError(null);
     } catch (e) {
-      if (mine === seq.current) setError(e);
+      if (mine === seq.current) { setError(e); setLoadingMore(false); }
     }
   }, [projectId]);
 
@@ -120,7 +141,7 @@ export function useProjectData(projectKey) {
   }, []);
 
   return {
-    summary, loading: !data && !error && Boolean(summary), error, notFound: !summary,
+    summary, loading: !data && !error && Boolean(summary), error, notFound: !summary, loadingMore, total,
     project: data?.project, role: data?.role, statuses: data?.statuses || [], labels: data?.labels || [], tasks: data?.tasks || [],
     ...derived, workspaceId: workspace.id, reload: load, patchLocal, ready: Boolean(data),
     afterWrite: sync,

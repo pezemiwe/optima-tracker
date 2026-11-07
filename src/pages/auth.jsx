@@ -28,7 +28,7 @@ function AuthLayout({ title, subtitle, children, footer }) {
             ))}
           </ul>
         </div>
-        <p className="text-sm text-slate-500">Zenith Optima · Close-out programme</p>
+        <p className="text-sm text-slate-400">Zenith Optima · Close-out programme</p>
         <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-[#86bc25]/10 blur-3xl" />
       </aside>
       <main className="grid place-items-center px-5 py-12">

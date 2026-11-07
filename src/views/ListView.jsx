@@ -5,6 +5,9 @@ import { EmptyState, PriorityIcon, StatusDot, UserSelect } from '../components/u
 import { groupTasks } from '../lib/filters.mjs';
 import { useWorkspace } from '../state/workspace.jsx';
 
+/* Large groups draw 100 rows at a time so a project with thousands of tasks stays fast. */
+const PAGE = 100;
+
 const GRID = 'grid items-center gap-3 px-3 grid-cols-[28px_28px_minmax(0,1fr)_32px] sm:grid-cols-[28px_28px_72px_minmax(0,1fr)_140px_150px_32px_100px_64px]';
 
 function QuickAdd({ onAdd, placeholder = 'Add task…' }) {
@@ -34,7 +37,7 @@ function Row({ task, pd, actions, canWrite, selected, selecting, onSelect, onOpe
       className={`${GRID} group cursor-pointer border-t border-line py-2 text-sm transition hover:bg-slate-50 dark:hover:bg-[#181c22] ${selected ? 'bg-[#86bc25]/10' : ''} ${active ? 'bg-slate-50 dark:bg-[#181c22]' : ''}`}
       onClick={() => onOpen(task)}
       onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) onOpen(task); }}
-      role="row"
+      role="listitem"
       tabIndex={0}
     >
       <span className={`${selecting || selected ? '' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'} grid place-items-center`} onClick={(e) => e.stopPropagation()}>
@@ -72,6 +75,7 @@ function Row({ task, pd, actions, canWrite, selected, selecting, onSelect, onOpe
 export default function ListView({ tasks, pd, actions, filters, canWrite, selection, onSelect, onSelectAll, onOpen, activeNumber, quickDefaults = {}, emptyHint }) {
   const { members } = useWorkspace();
   const [collapsed, setCollapsed] = useState({});
+  const [limits, setLimits] = useState({});
   const groups = useMemo(() => groupTasks(tasks, filters.groupBy, { statuses: pd.statuses, members, labels: pd.labels }), [tasks, filters.groupBy, pd.statuses, pd.labels, members]);
   const selecting = selection.size > 0;
 
@@ -90,7 +94,7 @@ export default function ListView({ tasks, pd, actions, filters, canWrite, select
 
   return (
     <div className="surface overflow-hidden">
-      <div className={`${GRID} faint py-2 text-[11px] font-semibold uppercase tracking-wider`} role="row">
+      <div className={`${GRID} faint py-2 text-[11px] font-semibold uppercase tracking-wider`}>
         <span className="grid place-items-center"><input aria-label="Select all" checked={selecting && tasks.every((t) => selection.has(t.id))} className="size-4 cursor-pointer accent-[#86bc25]" onChange={(e) => onSelectAll(e.target.checked ? tasks.map((t) => t.id) : [])} type="checkbox" /></span>
         <span />
         <span className="hidden sm:block">Key</span>
@@ -115,9 +119,16 @@ export default function ListView({ tasks, pd, actions, filters, canWrite, select
             )}
             {!isCollapsed && (
               <>
-                {group.tasks.map((task) => (
+                <div role="list" aria-label={`${group.label} tasks`}>
+                {group.tasks.slice(0, limits[group.id] ?? PAGE).map((task) => (
                   <Row actions={actions} active={task.number === activeNumber} canWrite={canWrite} key={task.id} onOpen={onOpen} onSelect={onSelect} pd={pd} selected={selection.has(task.id)} selecting={selecting} task={task} />
                 ))}
+                </div>
+                {group.tasks.length > (limits[group.id] ?? PAGE) && (
+                  <button className="faint w-full border-t border-line px-12 py-2.5 text-left text-xs font-medium hover:bg-slate-50 dark:hover:bg-[#181c22]" onClick={() => setLimits((l) => ({ ...l, [group.id]: (l[group.id] ?? PAGE) + PAGE }))} type="button">
+                    Show {Math.min(PAGE, group.tasks.length - (limits[group.id] ?? PAGE))} more ({group.tasks.length - (limits[group.id] ?? PAGE)} hidden)
+                  </button>
+                )}
                 {!group.tasks.length && <p className="faint border-t border-line px-12 py-3 text-xs">No tasks here yet.</p>}
                 {canWrite && !pd.project?.archived && <div className="border-t border-line"><QuickAdd onAdd={quickAdd(group)} /></div>}
               </>

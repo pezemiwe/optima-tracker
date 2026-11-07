@@ -56,7 +56,7 @@ export default function DailyView({ tasks, pd, actions, filters, canWrite, selec
             </div>
           ))}
         </div>
-        <div aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} className="h-1.5 bg-slate-200 dark:bg-[#242a33]" role="progressbar"><div className="h-full bg-[#86bc25] transition-all" style={{ width: `${percent}%` }} /></div>
+        <div aria-label="Tasks completed today" aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} className="h-1.5 bg-slate-200 dark:bg-[#242a33]" role="progressbar"><div className="h-full bg-[#86bc25] transition-all" style={{ width: `${percent}%` }} /></div>
       </section>
 
       <ListView

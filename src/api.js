@@ -1,9 +1,10 @@
 export class ApiError extends Error {
-  constructor(message, status, code) {
+  constructor(message, status, code, data = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 }
 
@@ -26,7 +27,7 @@ async function request(method, path, body) {
     if (response.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/register') && !path.startsWith('/auth/me')) {
       window.dispatchEvent(new Event('optima:signed-out'));
     }
-    throw new ApiError(json?.error || `Request failed (${response.status}).`, response.status, json?.code);
+    throw new ApiError(json?.error || `Request failed (${response.status}).`, response.status, json?.code, json);
   }
   return json;
 }

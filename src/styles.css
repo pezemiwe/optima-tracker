@@ -98,8 +98,11 @@ dialog::backdrop {
 /* ---------- shared component classes ---------- */
 @layer components {
   .surface { @apply rounded-xl border border-slate-200 bg-white dark:border-[#242a33] dark:bg-[#14171c]; }
-  .muted { @apply text-slate-500 dark:text-slate-400; }
-  .faint { @apply text-slate-400 dark:text-slate-500; }
+  /* Both clear WCAG AA (4.5:1) on the light page, white cards and the dark surfaces. */
+  .muted { color: #475569; }
+  .faint { color: #5b6678; }
+  .dark .muted { color: #a3b0c2; }
+  .dark .faint { color: #8d9bb0; }
   .divide-line { @apply divide-slate-100 dark:divide-[#242a33]; }
   .border-line { @apply border-slate-200 dark:border-[#242a33]; }
 
@@ -120,7 +123,7 @@ dialog::backdrop {
 
   .chip { @apply inline-flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:border-[#343b47] dark:text-slate-300; }
   .kbd { @apply inline-grid min-w-5 place-items-center rounded border border-slate-200 px-1 text-[11px] text-slate-500 dark:border-[#343b47] dark:text-slate-400; }
-  .tab { @apply -mb-px inline-flex cursor-pointer items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white; }
+  .tab { @apply -mb-px inline-flex cursor-pointer items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white; }
   .tab[aria-selected="true"] { @apply border-[#86bc25] text-slate-950 dark:text-white; }
   .page-title { @apply text-2xl font-semibold tracking-tight text-slate-950 dark:text-white; }
 }

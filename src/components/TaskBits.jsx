@@ -6,10 +6,10 @@ import { PRIORITIES } from '../lib/filters.mjs';
 
 const TONES = {
   overdue: 'text-red-600 dark:text-red-400',
-  today: 'text-amber-600 dark:text-amber-400',
+  today: 'text-amber-700 dark:text-amber-400',
   soon: 'text-slate-700 dark:text-slate-200',
-  later: 'text-slate-500 dark:text-slate-400',
-  done: 'text-slate-400 dark:text-slate-500',
+  later: 'text-slate-600 dark:text-slate-400',
+  done: 'text-slate-500 dark:text-slate-400',
 };
 
 export function DueBadge({ task, done, showTime = true }) {

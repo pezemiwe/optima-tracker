@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import Icon from '../components/Icon.jsx';
 import Shell from '../components/Shell.jsx';
-import { Avatar, EmptyState, Spinner } from '../components/ui.jsx';
+import { Avatar, EmptyState, KeyBadge, Spinner } from '../components/ui.jsx';
 import { useShell } from '../components/shellContext.js';
 import { describeActivity } from '../lib/activity.mjs';
 import { timeAgo } from '../lib/dates.mjs';
@@ -58,8 +58,8 @@ function HomeBody() {
         <Stat icon="check" label="Done this week" to={`${base}/my-tasks?all=1`} tone="text-lime-600" value={data.mine.doneThisWeek} />
       </section>
 
-      <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="grid gap-8">
+      <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-8 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-8">
           <section aria-label="Projects">
             <div className="mb-3 flex items-center justify-between"><h2 className="text-base font-semibold">Projects</h2>{canWrite && <button className="btn btn-sm" onClick={openNewProject} type="button"><Icon className="size-3.5" name="add" />New project</button>}</div>
             {!live.length ? (
@@ -70,7 +70,7 @@ function HomeBody() {
                   const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
                   return (
                     <Link className="surface block p-4 transition hover:border-slate-300 dark:hover:border-[#414957]" key={p.id} to={`${base}/p/${p.key}/list`}>
-                      <div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-lg text-xs font-bold text-white" style={{ background: p.color }}>{p.key.slice(0, 3)}</span><div className="min-w-0"><p className="truncate font-semibold">{p.name}</p><p className="faint font-mono text-xs">{p.key}</p></div><span className="ml-auto text-sm font-semibold">{pct}%</span></div>
+                      <div className="flex items-center gap-3"><KeyBadge className="!rounded-lg" project={p} size={36} /><div className="min-w-0"><p className="truncate font-semibold">{p.name}</p><p className="faint font-mono text-xs">{p.key}</p></div><span className="ml-auto text-sm font-semibold">{pct}%</span></div>
                       <div aria-label={`${pct}% complete`} className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-[#242a33]" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><div className="h-full bg-[#86bc25]" style={{ width: `${pct}%` }} /></div>
                       <p className="muted mt-3 flex gap-4 text-xs"><span>{p.total} tasks</span><span>{p.active} in progress</span><span className={p.overdue ? 'font-medium text-red-600 dark:text-red-400' : ''}>{p.overdue} overdue</span></p>
                     </Link>
@@ -84,9 +84,9 @@ function HomeBody() {
             <div className="surface divide-y divide-line">
               {data.workload.map((w) => (
                 <div className="flex items-center gap-3 px-4 py-2.5" key={w.id}>
-                  <Avatar size={26} user={w} /><span className="w-40 truncate text-sm">{w.name}</span>
+                  <Avatar size={26} user={w} /><span className="w-28 shrink-0 truncate text-sm sm:w-40">{w.name}</span>
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-[#242a33]"><div className="h-full rounded-full" style={{ width: `${(w.open / maxLoad) * 100}%`, background: w.color }} /></div>
-                  <span className="w-16 text-right text-xs muted">{w.open} open</span>
+                  <span className="w-14 shrink-0 text-right text-xs muted sm:w-16">{w.open} open</span>
                 </div>
               ))}
             </div>

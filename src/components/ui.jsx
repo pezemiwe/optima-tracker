@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './Icon.jsx';
+import { readableOn } from '../lib/colors.mjs';
 import { priorityMeta } from '../lib/filters.mjs';
 
 /* ---------- small hooks ---------- */
@@ -60,11 +61,20 @@ export const initials = (name = '') => name.trim().split(/\s+/).slice(0, 2).map(
 export function Avatar({ user, size = 24, className = '' }) {
   const name = user?.name || 'Unassigned';
   if (!user) {
-    return <span aria-label="Unassigned" className={`grid shrink-0 place-items-center rounded-full border border-dashed border-slate-300 text-slate-400 dark:border-slate-600 ${className}`} style={{ width: size, height: size }} title="Unassigned"><Icon className="size-3" name="user" /></span>;
+    return <span aria-label="Unassigned" className={`grid shrink-0 place-items-center rounded-full border border-dashed border-slate-400 text-slate-500 dark:border-slate-500 ${className}`} role="img" style={{ width: size, height: size }} title="Unassigned"><Icon className="size-3" name="user" /></span>;
   }
   return (
-    <span aria-label={name} className={`grid shrink-0 place-items-center rounded-full font-semibold text-white ${className}`} style={{ width: size, height: size, background: user.color || '#64748b', fontSize: Math.max(9, size * 0.4) }} title={name}>
+    <span aria-label={name} className={`grid shrink-0 place-items-center rounded-full font-semibold ${className}`} role="img" style={{ width: size, height: size, background: user.color || '#64748b', color: readableOn(user.color || '#64748b'), fontSize: Math.max(9, size * 0.4) }} title={name}>
       {initials(name)}
+    </span>
+  );
+}
+
+/* The coloured square with a project's key letters. */
+export function KeyBadge({ project, size = 22, className = '' }) {
+  return (
+    <span aria-hidden="true" className={`grid shrink-0 place-items-center rounded-md font-bold ${className}`} style={{ width: size, height: size, background: project.color, color: readableOn(project.color), fontSize: Math.max(9, size * 0.4) }}>
+      {project.key.slice(0, size >= 36 ? 3 : 2)}
     </span>
   );
 }
@@ -85,7 +95,7 @@ export function PriorityIcon({ value, showLabel = false }) {
 
 export function LabelChip({ label }) {
   return (
-    <span className="inline-flex max-w-[140px] items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[11px] font-medium" style={{ background: `${label.color}22`, color: label.color }}>
+    <span className="inline-flex max-w-[140px] items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-[11px] font-medium text-[color-mix(in_srgb,var(--lc)_45%,black)] dark:text-[color-mix(in_srgb,var(--lc)_45%,white)]" style={{ background: `${label.color}2e`, '--lc': label.color }}>
       <span className="truncate">{label.name}</span>
     </span>
   );

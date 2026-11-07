@@ -4,7 +4,7 @@ import CommandPalette from './CommandPalette.jsx';
 import NewTaskModal from './NewTaskModal.jsx';
 import { BellButton } from './Notifications.jsx';
 import { NewProjectModal, NewWorkspaceModal } from './ProjectModals.jsx';
-import { Avatar, Modal, Popover, useLocalStorage } from './ui.jsx';
+import { Avatar, KeyBadge, Modal, Popover, useLocalStorage } from './ui.jsx';
 import { ShellContext, useShell } from './shellContext.js';
 import { Link, matchPath, useRoute } from '../router.jsx';
 import { useAuth } from '../state/auth.jsx';
@@ -52,7 +52,7 @@ function WorkspaceSwitcher({ collapsed }) {
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#86bc25] text-sm font-bold text-slate-950">{workspace.name.slice(0, 1).toUpperCase()}</span>
         {!collapsed && (
           <>
-            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-white">{workspace.name}</span><span className="block text-xs capitalize text-slate-500">{workspace.role}</span></span>
+            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-white">{workspace.name}</span><span className="block text-xs capitalize text-slate-400">{workspace.role}</span></span>
             <Icon className="size-4 text-slate-500" name="chevronDown" />
           </>
         )}
@@ -62,7 +62,7 @@ function WorkspaceSwitcher({ collapsed }) {
     >
       {(close) => (
         <div>
-          <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Workspaces</p>
+          <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Workspaces</p>
           {workspaces.map((w) => (
             <button className="menu-item !text-slate-200 hover:!bg-[#242a33]" key={w.id} onClick={() => { close(); navigate(`/w/${w.slug}`); }} type="button">
               <span className="grid size-6 place-items-center rounded-md bg-[#86bc25]/20 text-xs font-bold text-[#a6d95a]">{w.name.slice(0, 1).toUpperCase()}</span>
@@ -85,7 +85,7 @@ function Sidebar({ collapsed, onToggle, onNavigate }) {
   const live = projects.filter((p) => !p.archived);
   const archived = projects.filter((p) => p.archived);
   const [showArchived, setShowArchived] = useLocalStorage('optima-show-archived', false);
-  const heading = 'px-3 pb-1.5 pt-5 text-[11px] font-semibold uppercase tracking-[.16em] text-slate-500';
+  const heading = 'px-3 pb-1.5 pt-5 text-[11px] font-semibold uppercase tracking-[.16em] text-slate-400';
   return (
     <aside className="flex h-full flex-col border-r border-[#1b2027] bg-[#0b0d10] text-slate-100" onClick={(e) => { if (e.target.closest('a')) onNavigate?.(); }}>
       <WorkspaceSwitcher collapsed={collapsed} />
@@ -105,24 +105,24 @@ function Sidebar({ collapsed, onToggle, onNavigate }) {
           const active = path.startsWith(`${base}/p/${p.key}`);
           return (
             <Link aria-current={active ? 'page' : undefined} className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition ${active ? 'bg-[#1d232b] text-white' : 'text-slate-300 hover:bg-[#161a20]'} ${collapsed ? 'justify-center px-0' : ''}`} key={p.id} title={collapsed ? p.name : undefined} to={`${base}/p/${p.key}/list`}>
-              <span className="grid size-[22px] shrink-0 place-items-center rounded-md text-[10px] font-bold text-white" style={{ background: p.color }}>{p.key.slice(0, 2)}</span>
-              {!collapsed && <><span className="min-w-0 flex-1 truncate">{p.name}</span><span className="font-mono text-[11px] text-slate-500">{p.taskCount}</span></>}
+              <KeyBadge project={p} />
+              {!collapsed && <><span className="min-w-0 flex-1 truncate">{p.name}</span><span className="font-mono text-[11px] text-slate-400">{p.taskCount}</span></>}
             </Link>
           );
         })}
         {!live.length && !collapsed && (
           canWrite
-            ? <button className="mx-3 mt-1 text-left text-xs text-slate-500 hover:text-slate-300" onClick={openNewProject} type="button">No projects yet. Create one</button>
-            : <p className="mx-3 mt-1 text-xs text-slate-500">No projects yet.</p>
+            ? <button className="mx-3 mt-1 text-left text-xs text-slate-400 hover:text-slate-200" onClick={openNewProject} type="button">No projects yet. Create one</button>
+            : <p className="mx-3 mt-1 text-xs text-slate-400">No projects yet.</p>
         )}
         {archived.length > 0 && !collapsed && (
           <>
-            <button className="mt-3 flex w-full items-center gap-2 px-3 py-1 text-xs text-slate-500 hover:text-slate-300" onClick={() => setShowArchived((v) => !v)} type="button">
+            <button className="mt-3 flex w-full items-center gap-2 px-3 py-1 text-xs text-slate-400 hover:text-slate-200" onClick={() => setShowArchived((v) => !v)} type="button">
               <Icon className="size-3.5" name={showArchived ? 'chevronDown' : 'chevronRight'} />Archived ({archived.length})
             </button>
             {showArchived && archived.map((p) => (
-              <Link className="flex h-8 items-center gap-3 rounded-lg px-3 text-sm text-slate-500 hover:bg-[#161a20]" key={p.id} to={`${base}/p/${p.key}/list`}>
-                <span className="grid size-[18px] place-items-center rounded text-[9px] font-bold text-white opacity-60" style={{ background: p.color }}>{p.key.slice(0, 2)}</span>
+              <Link className="flex h-8 items-center gap-3 rounded-lg px-3 text-sm text-slate-400 hover:bg-[#161a20]" key={p.id} to={`${base}/p/${p.key}/list`}>
+                <span className="opacity-60"><KeyBadge project={p} size={18} /></span>
                 <span className="truncate">{p.name}</span>
               </Link>
             ))}
@@ -238,7 +238,7 @@ export default function Shell({ crumbs = [], children, actions }) {
                 </span>
               ))}
             </nav>
-            <button aria-label="Search" className="btn hidden w-56 justify-start gap-2 text-slate-500 md:inline-flex" onClick={() => setPalette(true)} type="button">
+            <button aria-label="Search" className="btn muted hidden w-56 justify-start gap-2 md:inline-flex" onClick={() => setPalette(true)} type="button">
               <Icon className="size-4" name="search" /><span className="flex-1 text-left font-normal">Search…</span><span className="kbd">Ctrl K</span>
             </button>
             <button aria-label="Search" className="icon-btn size-9 md:hidden" onClick={() => setPalette(true)} type="button"><Icon name="search" /></button>
