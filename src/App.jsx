@@ -3,6 +3,7 @@ import { apiRequest, collectionApi } from './api.js';
 import DashboardHeader from './components/DashboardHeader.jsx';
 import Icon from './components/Icon.jsx';
 import KanbanBoard from './components/KanbanBoard.jsx';
+import ManageOptionsDialog from './components/ManageOptionsDialog.jsx';
 import Notifications from './components/Notifications.jsx';
 import Overview from './components/Overview.jsx';
 import Sidebar from './components/Sidebar.jsx';
@@ -30,6 +31,8 @@ function initialTheme() {
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [subtasks, setSubtasks] = useState([]);
+  const [workstreams, setWorkstreams] = useState([]);
+  const [owners, setOwners] = useState([]);
   const [syncStatus, setSyncStatus] = useState('Connecting');
   const [notice, setNotice] = useState('');
   const [theme, setTheme] = useState(initialTheme);
@@ -45,6 +48,8 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [saving, setSaving] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [manageOptionsOpen, setManageOptionsOpen] = useState(false);
+  const [manageOptionKind, setManageOptionKind] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => storedValue('optima-sidebar', '') === 'collapsed');
   const revision = useRef(null);
@@ -63,6 +68,8 @@ export default function App() {
         revision.current = result.rev;
         setTasks(result.tasks.map(({ id, data }) => ({ id, ...data, status: data.status === 'blocked' ? 'doing' : data.status })));
         setSubtasks(result.subtasks.map(({ id, data }) => ({ id, ...data })));
+        setWorkstreams(result.workstreams);
+        setOwners(result.owners);
       }
     } catch (error) {
       syncFailures.current += 1;
@@ -103,10 +110,9 @@ export default function App() {
 
   const canWrite = true;
   const overdue = useMemo(() => tasks.filter((task) => isOverdue(task)), [tasks]);
-  const visibleTasks = useMemo(() => {
+  const matchingTasks = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return tasks.filter((task) => {
-      if (!allDays && task.day !== date) return false;
       if (workstream !== 'all' && task.ws !== workstream) return false;
       if (owner === '__none' ? Boolean(task.owner) : owner !== 'all' && task.owner !== owner) return false;
       if (statusFilter === 'open' && isFinished(task.status)) return false;
@@ -129,7 +135,12 @@ export default function App() {
       const priority = { high: 0, med: 1, low: 2 };
       return unfinished || (priority[a.priority] ?? 1) - (priority[b.priority] ?? 1) || (a.n || 0) - (b.n || 0);
     });
-  }, [tasks, allDays, date, workstream, owner, statusFilter, search, sortKey, sortDir]);
+  }, [tasks, workstream, owner, statusFilter, search, sortKey, sortDir]);
+  const visibleTasks = useMemo(
+    () => allDays ? matchingTasks : matchingTasks.filter((task) => task.day === date),
+    [allDays, date, matchingTasks],
+  );
+  const otherDateTaskCount = allDays ? 0 : matchingTasks.filter((task) => task.day !== date).length;
 
   async function saveTask(values) {
     if (!canWrite) return;
@@ -201,6 +212,18 @@ export default function App() {
     }
   }
 
+  async function addOption(kind, name) {
+    await apiRequest(`/api/options/${kind}`, { method: 'POST', body: { name } });
+    await refresh();
+  }
+
+  async function removeOption(kind, name) {
+    await apiRequest(`/api/options/${kind}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    if (kind === 'workstreams' && workstream === name) setWorkstream('all');
+    if (kind === 'owners' && owner === name) setOwner('all');
+    await refresh();
+  }
+
   async function changeStatus(task, status) {
     await patchTask(task, { status });
   }
@@ -212,6 +235,14 @@ export default function App() {
       setNotice(error.message);
     }
   }
+
+  const createTask = useCallback((status = 'todo') => {
+    setSelectedTask({
+      status,
+      ws: workstream === 'all' ? '' : workstream,
+      owner: owner === 'all' || owner === '__none' ? '' : owner,
+    });
+  }, [owner, workstream]);
 
   function sortTasks(key) {
     if (sortKey === key) setSortDir((direction) => direction * -1);
@@ -244,6 +275,9 @@ export default function App() {
       { Metric: 'Total tasks', Value: tasks.length },
       { Metric: 'To do', Value: tasks.filter((task) => task.status === 'todo').length },
       { Metric: 'In progress', Value: tasks.filter((task) => task.status === 'doing').length },
+      { Metric: 'Done', Value: tasks.filter((task) => task.status === 'done').length },
+      { Metric: 'Merged', Value: tasks.filter((task) => task.status === 'merged').length },
+      { Metric: 'Closed', Value: tasks.filter((task) => task.status === 'closed').length },
       { Metric: 'Completed', Value: tasks.filter((task) => isFinished(task.status)).length },
       { Metric: 'Overdue', Value: overdue.length },
     ];
@@ -265,7 +299,7 @@ export default function App() {
       if (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return;
       if (event.key.toLowerCase() === 'n' && canWrite) {
         event.preventDefault();
-        setSelectedTask({ status: 'todo' });
+        createTask();
       } else if (event.key === '/') {
         event.preventDefault();
         document.querySelector('input[aria-label="Search tasks"]')?.focus();
@@ -276,19 +310,28 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [canWrite]);
+  }, [canWrite, createTask]);
 
   const renderSidebar = (isCollapsed, onCollapse) => (
     <Sidebar
       collapsed={isCollapsed}
       onCollapse={onCollapse}
+      onAddOwner={() => { setManageOptionKind('owners'); setManageOptionsOpen(true); setMobileMenuOpen(false); }}
+      onAddWorkstream={() => { setManageOptionKind('workstreams'); setManageOptionsOpen(true); setMobileMenuOpen(false); }}
+      onManageOptions={() => { setManageOptionKind(null); setManageOptionsOpen(true); setMobileMenuOpen(false); }}
       onOwner={(value) => { setOwner(value); setMobileMenuOpen(false); }}
       onTheme={setTheme}
-      onWorkstream={(value) => { setWorkstream(value); setMobileMenuOpen(false); }}
+      onWorkstream={(value) => {
+        setWorkstream(value);
+        if (value !== 'all') setAllDays(true);
+        setMobileMenuOpen(false);
+      }}
       owner={owner}
+      owners={owners}
       tasks={tasks}
       theme={theme}
       workstream={workstream}
+      workstreams={workstreams}
     />
   );
   const dayCount = new Set(tasks.map((task) => task.day).filter(Boolean)).size;
@@ -303,7 +346,7 @@ export default function App() {
           canWrite={canWrite}
           day={date}
           onAllDays={() => setAllDays((current) => !current)}
-          onCreate={() => setSelectedTask({ status: 'todo' })}
+          onCreate={() => createTask()}
           onDayChange={(value) => { setDate(value); setAllDays(false); }}
           onExport={exportWorkbook}
           onMenu={() => setMobileMenuOpen(true)}
@@ -340,8 +383,8 @@ export default function App() {
           )}
           <Overview tasks={visibleTasks} />
           {view === 'list'
-            ? <TaskTable canWrite={canWrite} onCreate={() => setSelectedTask({ status: 'todo' })} onOpen={setSelectedTask} onSort={sortTasks} onStatus={changeStatus} sortDir={sortDir} sortKey={sortKey} subtasks={subtasks} tasks={visibleTasks} />
-            : <KanbanBoard canWrite={canWrite} onCreate={(status) => setSelectedTask({ status })} onOpen={setSelectedTask} onStatus={(taskOrId, status) => {
+            ? <TaskTable canWrite={canWrite} onCreate={() => createTask()} onOpen={setSelectedTask} onShowAllDates={() => setAllDays(true)} onSort={sortTasks} onStatus={changeStatus} otherDateTaskCount={otherDateTaskCount} sortDir={sortDir} sortKey={sortKey} subtasks={subtasks} tasks={visibleTasks} />
+            : <KanbanBoard canWrite={canWrite} onCreate={createTask} onOpen={setSelectedTask} onStatus={(taskOrId, status) => {
               const task = typeof taskOrId === 'string' ? tasks.find((item) => item.id === taskOrId) : taskOrId;
               if (task) changeStatus(task, status);
             }} subtasks={subtasks} tasks={visibleTasks} />}
@@ -355,15 +398,26 @@ export default function App() {
       {notificationsOpen && <div className="fixed right-5 top-[62px] z-30 lg:right-8"><Notifications canWrite={canWrite} onClose={() => setNotificationsOpen(false)} onOpen={(task) => { setSelectedTask(task); setNotificationsOpen(false); }} onPatch={patchTask} tasks={overdue} /></div>}
       {selectedTask && <TaskDialog
         canWrite={canWrite}
+        defaultDay={allDays ? toDateInput() : date}
         onAddSubtask={addSubtask}
         onClose={() => setSelectedTask(null)}
         onDelete={deleteTask}
         onDeleteSubtask={deleteSubtask}
         onSave={saveTask}
         onUpdateSubtask={updateSubtask}
+        owners={owners}
         saving={saving}
         subtasks={subtasks.filter((subtask) => subtask.parent === selectedTask.id).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))}
         task={selectedTask}
+        workstreams={workstreams}
+      />}
+      {manageOptionsOpen && <ManageOptionsDialog
+        initialAddKind={manageOptionKind}
+        onAdd={addOption}
+        onClose={() => { setManageOptionsOpen(false); setManageOptionKind(null); }}
+        onRemove={removeOption}
+        owners={owners}
+        workstreams={workstreams}
       />}
     </div>
   );

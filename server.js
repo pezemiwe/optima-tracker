@@ -7,7 +7,6 @@
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
-const fs = require('fs');
 const { Pool } = require('pg');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -40,6 +39,16 @@ const SCHEMA = {
     createdAt: ms,
   },
 };
+const OPTION_TYPES = {
+  workstreams: { field: 'ws', maxLength: 60, label: 'workstream' },
+  owners: { field: 'owner', maxLength: 80, label: 'team owner' },
+};
+const PLACEHOLDER_TASK_IDS = [
+  't-print-paper-feedback',
+  't-dams-feedback',
+  't-opex-feedback',
+  't-e2e-testing',
+];
 const REQUIRED = {
   tasks: ['title', 'day', 'status', 'priority'],
   subtasks: ['parent', 'title'],
@@ -77,7 +86,15 @@ CREATE TABLE IF NOT EXISTS audit (
   coll text NOT NULL,
   doc text NOT NULL,
   detail jsonb
-);`;
+);
+CREATE TABLE IF NOT EXISTS app_settings (
+  name text PRIMARY KEY,
+  value jsonb NOT NULL
+);
+INSERT INTO app_settings (name, value) VALUES
+  ('workstreams', '[]'::jsonb),
+  ('owners', '[]'::jsonb)
+ON CONFLICT (name) DO NOTHING;`;
 
 function makePool() {
   let host = '';
@@ -91,32 +108,32 @@ async function migrate(pool) {
   await pool.query(SCHEMA_SQL);
 }
 
-async function seedIfEmpty(pool) {
-  if (process.env.SEED === 'off') return 0;
-  const file = path.join(__dirname, 'seed', 'seed.json');
-  if (!fs.existsSync(file)) return 0;
-  const seed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const c = await pool.connect();
-  let added = 0;
-  try {
-    await c.query('BEGIN');
-    await c.query("SELECT v FROM meta WHERE k='rev' FOR UPDATE");
-    const { rows } = await c.query('SELECT 1 FROM docs LIMIT 1');
-    if (!rows.length) {
-      for (const coll of ['tasks', 'subtasks']) {
-        for (const d of seed[coll] || []) {
-          await c.query('INSERT INTO docs (coll, id, data) VALUES ($1,$2,$3)', [coll, d.id, d.data]);
-          added++;
-        }
-      }
-      if (added) await c.query("UPDATE meta SET v = v + 1 WHERE k='rev'");
+async function removePlaceholderTasks(pool) {
+  const { rows } = await pool.query(
+    "SELECT id FROM docs WHERE coll='tasks' AND id = ANY($1::text[])",
+    [PLACEHOLDER_TASK_IDS],
+  );
+  if (!rows.length) return 0;
+
+  const { result } = await write(pool, async (c) => {
+    const { rows: deleted } = await c.query(
+      "DELETE FROM docs WHERE coll='tasks' AND id = ANY($1::text[]) RETURNING id",
+      [PLACEHOLDER_TASK_IDS],
+    );
+    if (!deleted.length) return 0;
+    await c.query(
+      "DELETE FROM docs WHERE coll='subtasks' AND data->>'parent' = ANY($1::text[])",
+      [deleted.map((row) => row.id)],
+    );
+    for (const row of deleted) {
+      await c.query(
+        'INSERT INTO audit (who, action, coll, doc, detail) VALUES ($1,$2,$3,$4,$5)',
+        ['Anonymous', 'delete', 'tasks', row.id, { reason: 'Remove placeholder task' }],
+      );
     }
-    await c.query('COMMIT');
-  } catch (e) {
-    await c.query('ROLLBACK').catch(() => {});
-    throw e;
-  } finally { c.release(); }
-  return added;
+    return deleted.length;
+  });
+  return result;
 }
 
 // Runs fn(client) inside a transaction holding the single revision row lock, so writes are serial.
@@ -172,11 +189,92 @@ function createApp(pool) {
       const { rows: m } = await pool.query("SELECT v FROM meta WHERE k='rev'");
       const rev = Number(m[0].v);
       if (req.query.since !== undefined && Number(req.query.since) === rev) return res.json({ rev, unchanged: true });
-      const { rows } = await pool.query('SELECT coll, id, data FROM docs ORDER BY created_at, id');
-      const out = { rev, tasks: [], subtasks: [] };
+      const [{ rows }, { rows: settings }] = await Promise.all([
+        pool.query('SELECT coll, id, data FROM docs ORDER BY created_at, id'),
+        pool.query('SELECT name, value FROM app_settings'),
+      ]);
+      const out = { rev, tasks: [], subtasks: [], workstreams: [], owners: [] };
       for (const r of rows) if (out[r.coll]) out[r.coll].push({ id: r.id, data: r.data });
+      for (const setting of settings) if (out[setting.name]) out[setting.name] = setting.value;
       res.json(out);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Could not load.' }); }
+  });
+
+  app.post('/api/options/:kind', requireJson, async (req, res) => {
+    const { kind } = req.params;
+    const option = OPTION_TYPES[kind];
+    if (!option) return res.status(404).json({ error: 'Unknown option list.' });
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (!name || name.length > option.maxLength) {
+      return res.status(400).json({ error: `Enter a name of 1-${option.maxLength} characters.` });
+    }
+
+    try {
+      const { rev } = await write(pool, async (c) => {
+        const { rows } = await c.query('SELECT value FROM app_settings WHERE name=$1 FOR UPDATE', [kind]);
+        const values = rows[0]?.value;
+        if (!Array.isArray(values)) throw new Error('Option list is not configured.');
+        if (values.some((value) => value.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+          const error = new Error(`That ${option.label} already exists.`);
+          error.status = 409;
+          throw error;
+        }
+        await c.query('UPDATE app_settings SET value=$2 WHERE name=$1', [kind, JSON.stringify([...values, name])]);
+        await c.query(
+          'INSERT INTO audit (who, action, coll, doc, detail) VALUES ($1,$2,$3,$4,$5)',
+          ['Anonymous', 'create', 'settings', kind, { name }],
+        );
+      });
+      res.status(201).json({ ok: true, rev });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      console.error(e);
+      res.status(500).json({ error: `Could not add ${option.label}.` });
+    }
+  });
+
+  app.delete('/api/options/:kind/:name', async (req, res) => {
+    const { kind } = req.params;
+    const option = OPTION_TYPES[kind];
+    if (!option) return res.status(404).json({ error: 'Unknown option list.' });
+    const name = req.params.name.trim();
+    if (!name) return res.status(400).json({ error: 'Option name is required.' });
+
+    try {
+      const { rev } = await write(pool, async (c) => {
+        const { rows } = await c.query('SELECT value FROM app_settings WHERE name=$1 FOR UPDATE', [kind]);
+        const values = rows[0]?.value;
+        if (!Array.isArray(values)) throw new Error('Option list is not configured.');
+        const existing = values.find((value) => value.toLocaleLowerCase() === name.toLocaleLowerCase());
+        if (!existing) {
+          const error = new Error(`That ${option.label} was not found.`);
+          error.status = 404;
+          throw error;
+        }
+        const assigned = await c.query(
+          `SELECT id FROM docs WHERE coll='tasks' AND lower(data->>'${option.field}')=lower($1) LIMIT 1`,
+          [existing],
+        );
+        if (assigned.rowCount) {
+          const error = new Error(`Reassign tasks before removing this ${option.label}.`);
+          error.status = 409;
+          throw error;
+        }
+        await c.query('UPDATE app_settings SET value=$2 WHERE name=$1', [
+          kind,
+          JSON.stringify(values.filter((value) => value !== existing)),
+        ]);
+        await c.query(
+          'INSERT INTO audit (who, action, coll, doc, detail) VALUES ($1,$2,$3,$4,$5)',
+          ['Anonymous', 'delete', 'settings', kind, { name: existing }],
+        );
+      });
+      res.json({ ok: true, rev });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      console.error(e);
+      res.status(500).json({ error: `Could not remove ${option.label}.` });
+    }
   });
 
   app.post('/api/:coll', collOk, requireJson, async (req, res) => {
@@ -255,10 +353,10 @@ async function main() {
   const pool = makePool();
   pool.on('error', (e) => console.error('pg pool error', e.message));
   await migrate(pool);
-  const added = await seedIfEmpty(pool);
-  if (added) console.log(`Seeded ${added} starter records.`);
+  const removed = await removePlaceholderTasks(pool);
+  if (removed) console.log(`Removed ${removed} placeholder tasks.`);
   createApp(pool).listen(PORT, '0.0.0.0', () => console.log(`Optima tracker listening on ${PORT}.`));
 }
 
-module.exports = { createApp, migrate, seedIfEmpty };
+module.exports = { createApp, migrate, removePlaceholderTasks };
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });

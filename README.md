@@ -12,7 +12,7 @@ One Node server, one Postgres database, and a React frontend styled with Tailwin
 | `server.js` | Serves the built app from `dist/` and exposes a JSON API. |
 | Postgres | Stores tasks, subtasks and an audit trail (who changed what). |
 | `render.yaml` | Tells Render to create the web service and the database together. |
-| `seed/seed.json` | The four starter tasks. Loaded only when the database is empty. |
+| `app_settings` | Shared workstream and task-owner lists. A new database starts with both lists empty. |
 | `test/` | API tests, including anonymous access checks. |
 
 Everyone sees changes within about 4 seconds. The browser remembers the theme, view and selected date; checklist data is stored in Postgres.
@@ -20,8 +20,6 @@ Everyone sees changes within about 4 seconds. The browser remembers the theme, v
 ## 2. Before you deploy
 
 **There is no sign-in or access control. Anyone who can reach the app can view, create, edit, and delete tasks.** The Render URL is accessible to anyone who has it. Do not use this deployment for confidential or restricted data; use an approved private network or add authentication before hosting sensitive information.
-
-The seed file contains task text. Keep the repository private.
 
 ## 3. Deploy on Render
 
@@ -35,13 +33,14 @@ The seed file contains task text. Keep the repository private.
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | yes | Set automatically from the database. |
-| `SEED` | no | Set to `off` to skip loading the starter tasks on an empty database. |
 | `PGSSL` | no | Set to `off` only if your database refuses TLS on an external URL. |
 
 ## 5. How it behaves
 
 - **Shared editing:** everyone who can reach the app can create, change, and delete tasks.
+- **Fresh start:** no demo tasks are seeded; startup removes the four known placeholder tasks from existing databases.
 - **Task numbers** (T-001, T-002 and so on) are assigned by the server, so two people adding at once never collide.
+- **Configurable lists:** manage workstreams and task owners from the sidebar. Lists are shared and saved in PostgreSQL; an option cannot be removed while a task uses it.
 - **Deleting a task** also deletes its subtasks.
 - **Live updates:** the page checks for changes every 4 seconds while the tab is visible. The footer shows Live, Reconnecting or Disconnected.
 - **Capacity:** tested with 100 tasks and 300 subtasks loading in a single request. The practical ceiling is far higher.
@@ -71,7 +70,7 @@ Backups: the Excel export is the simplest copy. For a full copy use `pg_dump "<e
 ```bash
 createdb optima
 export DATABASE_URL=postgres://localhost/optima
-npm install
+npm ci
 npm run build
 npm start          # http://localhost:3000
 ```

@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
 import Icon from './Icon.jsx';
-import { PRIORITIES, STATUSES, toDateInput, WORKSTREAMS } from '../utils.js';
+import { PRIORITIES, STATUSES, toDateInput } from '../utils.js';
 
-const blankTask = (status = 'todo') => ({
-  title: '', ws: WORKSTREAMS[0], owner: '', watcher: '', priority: 'med',
-  status, day: toDateInput(), due: '', note: '',
+const blankTask = (status = 'todo', day = toDateInput()) => ({
+  title: '', ws: '', owner: '', watcher: '', priority: 'med',
+  status, day, due: '', note: '',
 });
 
-export default function TaskDialog({ task, subtasks, canWrite, onClose, onSave, onDelete, onAddSubtask, onUpdateSubtask, onDeleteSubtask, saving }) {
-  const [form, setForm] = useState(() => task ? { ...blankTask(), ...task } : blankTask());
+export default function TaskDialog({ task, subtasks, workstreams, owners, canWrite, defaultDay, onClose, onSave, onDelete, onAddSubtask, onUpdateSubtask, onDeleteSubtask, saving }) {
+  const [form, setForm] = useState(() => task ? { ...blankTask(task.status, defaultDay), ...task } : blankTask('todo', defaultDay));
   const [newSubtask, setNewSubtask] = useState('');
   const [error, setError] = useState('');
   const isNew = !task?.id;
+  const workstreamOptions = form.ws && !workstreams.includes(form.ws) ? [form.ws, ...workstreams] : workstreams;
+  const ownerOptions = form.owner && !owners.includes(form.owner) ? [form.owner, ...owners] : owners;
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -78,9 +80,9 @@ export default function TaskDialog({ task, subtasks, canWrite, onClose, onSave, 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5 text-xs font-medium text-slate-500">Status<select className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('status', event.target.value)} value={form.status}>{STATUSES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="grid gap-1.5 text-xs font-medium text-slate-500">Priority<select className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('priority', event.target.value)} value={form.priority}>{PRIORITIES.map((value) => <option key={value} value={value}>{value === 'med' ? 'Medium' : value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Workstream<select className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('ws', event.target.value)} value={form.ws}>{WORKSTREAMS.map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Workstream<select className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('ws', event.target.value)} value={form.ws}><option value="">No workstream</option>{workstreamOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label className="grid gap-1.5 text-xs font-medium text-slate-500">Due date<input className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('day', event.target.value)} required type="date" value={form.day} /></label>
-            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Owner<input className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} maxLength={80} onChange={(event) => change('owner', event.target.value)} placeholder="Unassigned" value={form.owner} /></label>
+            <label className="grid gap-1.5 text-xs font-medium text-slate-500">Owner<select className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('owner', event.target.value)} value={form.owner}><option value="">Unassigned</option>{ownerOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label className="grid gap-1.5 text-xs font-medium text-slate-500">Due time<input className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} onChange={(event) => change('due', event.target.value)} type="time" value={form.due} /></label>
             <label className="grid gap-1.5 text-xs font-medium text-slate-500 sm:col-span-2">Watcher<input className="h-10 rounded-lg border border-slate-200 bg-transparent px-3 text-sm text-slate-800 dark:border-[#343b47] dark:text-slate-100" disabled={!canWrite} maxLength={80} onChange={(event) => change('watcher', event.target.value)} placeholder="Optional" value={form.watcher} /></label>
           </div>
@@ -89,9 +91,13 @@ export default function TaskDialog({ task, subtasks, canWrite, onClose, onSave, 
               <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">Subtasks <span className="font-normal text-slate-400">{subtasks.filter((item) => item.done).length}/{subtasks.length}</span></h3>
               <div className="grid gap-2">
                 {subtasks.map((subtask) => (
-                  <div className="flex items-center gap-2" key={subtask.id}>
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:flex" key={subtask.id}>
                     <input aria-label={`Complete ${subtask.title}`} checked={subtask.done} className="size-4 accent-[#86bc25]" disabled={!canWrite} onChange={(event) => onUpdateSubtask(subtask, { done: event.target.checked })} type="checkbox" />
                     <input aria-label="Subtask title" className={`min-w-0 flex-1 border-b border-transparent bg-transparent py-1 text-sm text-slate-700 focus:border-slate-300 dark:text-slate-300 dark:focus:border-[#343b47] ${subtask.done ? 'text-slate-400 line-through' : ''}`} defaultValue={subtask.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== subtask.title) onUpdateSubtask(subtask, { title }); else if (!title) event.currentTarget.value = subtask.title; }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
+                    <select aria-label={`Owner for ${subtask.title}`} className="col-start-2 col-end-4 w-full rounded-md border border-slate-200 bg-transparent px-2 py-1 text-xs text-slate-600 dark:border-[#343b47] dark:text-slate-300 sm:max-w-28 sm:w-auto" disabled={!canWrite} onChange={(event) => onUpdateSubtask(subtask, { owner: event.target.value })} value={subtask.owner || ''}>
+                      <option value="">Unassigned</option>
+                      {(subtask.owner && !owners.includes(subtask.owner) ? [subtask.owner, ...owners] : owners).map((owner) => <option key={owner}>{owner}</option>)}
+                    </select>
                     <button aria-label={`Delete ${subtask.title}`} className="grid size-7 place-items-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/40" disabled={!canWrite} onClick={() => onDeleteSubtask(subtask)} type="button"><Icon className="size-3.5" name="trash" /></button>
                   </div>
                 ))}

@@ -19,12 +19,21 @@ const columns = [
   ['due', 'Due'], ['priority', 'Priority'], ['status', 'Status'],
 ];
 
-export default function TaskTable({ tasks, subtasks, canWrite, onOpen, onStatus, onCreate, sortKey, sortDir, onSort }) {
+export default function TaskTable({ tasks, subtasks, canWrite, onOpen, onStatus, onCreate, onShowAllDates, otherDateTaskCount = 0, sortKey, sortDir, onSort }) {
   if (!tasks.length) {
     return (
       <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-slate-300 bg-white px-6 text-center dark:border-[#343b47] dark:bg-[#14171c]">
-        <div><p className="font-medium text-slate-800 dark:text-slate-100">No tasks match these filters</p><p className="mt-1 text-sm text-slate-500">Try another date or clear the search.</p>
-          {canWrite && <button className="mt-4 rounded-lg bg-[#86bc25] px-3 py-2 text-sm font-semibold text-slate-950" onClick={onCreate} type="button">Create a task</button>}
+        <div>
+          <p className="font-medium text-slate-800 dark:text-slate-100">{otherDateTaskCount ? 'No tasks scheduled for this date' : 'No tasks match these filters'}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {otherDateTaskCount
+              ? `${otherDateTaskCount} matching ${otherDateTaskCount === 1 ? 'task is' : 'tasks are'} scheduled on other dates.`
+              : 'Try another date or clear the search.'}
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {otherDateTaskCount > 0 && <button className="rounded-lg bg-[#86bc25] px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-[#97cf2e]" onClick={onShowAllDates} type="button">Show all dates</button>}
+            {canWrite && <button className="rounded-lg bg-[#86bc25] px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-[#97cf2e]" onClick={onCreate} type="button">Create a task</button>}
+          </div>
         </div>
       </div>
     );
