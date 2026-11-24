@@ -10,7 +10,8 @@
     "start": "node server.js",
     "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
     "e2e": "node --test --test-concurrency=1 --test-timeout=180000 \"e2e/*.e2e.js\"",
-    "bench": "node scripts/bench.js"
+    "bench": "node scripts/bench.js",
+    "docs:prd": "node docs/prd/build.js"
   },
   "engines": {
     "node": ">=20"
