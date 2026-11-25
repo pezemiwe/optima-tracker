@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 const { HttpError, ROLE_RANK } = require('./util');
 
-const COOKIE = 'optima_session';
+const COOKIE = 'cortex_session';
 const SESSION_DAYS = 30;
 
 /* ---------- passwords (scrypt) ---------- */

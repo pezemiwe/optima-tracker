@@ -10,7 +10,7 @@ function createMailer({ url = process.env.SMTP_URL, from = process.env.MAIL_FROM
     return { enabled: false, async send() { return { skipped: true }; } };
   }
   const transport = nodemailer.createTransport(url);
-  const sender = from || 'Optima Work Tracker <no-reply@localhost>';
+  const sender = from || 'Cortex Tracker <no-reply@localhost>';
   return {
     enabled: true,
     async send({ to, subject, text, html }) {

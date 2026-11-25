@@ -51,7 +51,7 @@ async function importLegacy(c, { workspaceId, ownerId }) {
 
   const { rows: pr } = await c.query(
     `INSERT INTO projects (workspace_id, key, name, description, color, created_by)
-     VALUES ($1,'CLO','Daily Close-out','Imported from the original Optima close-out checklist.','#65a30d',$2) RETURNING id`,
+     VALUES ($1,'CLO','Daily Close-out','Imported from the original close-out checklist.','#65a30d',$2) RETURNING id`,
     [workspaceId, ownerId],
   );
   const projectId = pr[0].id;

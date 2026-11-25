@@ -7,7 +7,7 @@ function wrap(title, bodyHtml) {
   return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#14171c">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:12px;padding:28px">
-<tr><td><p style="margin:0 0 16px;font-weight:bold;font-size:15px">Optima Work Tracker</p><h1 style="margin:0 0 12px;font-size:20px">${esc(title)}</h1>${bodyHtml}</td></tr></table>
+<tr><td><p style="margin:0 0 16px;font-weight:bold;font-size:15px">Cortex Tracker</p><h1 style="margin:0 0 12px;font-size:20px">${esc(title)}</h1>${bodyHtml}</td></tr></table>
 </td></tr></table></body></html>`;
 }
 

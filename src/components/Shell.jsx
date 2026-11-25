@@ -84,7 +84,7 @@ function Sidebar({ collapsed, onToggle, onNavigate }) {
   const base = `/w/${workspace.slug}`;
   const live = projects.filter((p) => !p.archived);
   const archived = projects.filter((p) => p.archived);
-  const [showArchived, setShowArchived] = useLocalStorage('optima-show-archived', false);
+  const [showArchived, setShowArchived] = useLocalStorage('cortex-show-archived', false);
   const heading = 'px-3 pb-1.5 pt-5 text-[11px] font-semibold uppercase tracking-[.16em] text-slate-400';
   return (
     <aside className="flex h-full flex-col border-r border-[#1b2027] bg-[#0b0d10] text-slate-100" onClick={(e) => { if (e.target.closest('a')) onNavigate?.(); }}>
@@ -175,7 +175,7 @@ function UserMenu() {
 export default function Shell({ crumbs = [], children, actions }) {
   const { workspace, canWrite, projects } = useWorkspace();
   const { navigate, path } = useRoute();
-  const [collapsed, setCollapsed] = useLocalStorage('optima-sidebar-collapsed', false);
+  const [collapsed, setCollapsed] = useLocalStorage('cortex-sidebar-collapsed', false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [modal, setModal] = useState(null); // { type, defaults }
   const [palette, setPalette] = useState(false);
@@ -186,7 +186,7 @@ export default function Shell({ crumbs = [], children, actions }) {
   const openNewTask = useCallback((defaults = {}) => {
     if (!canWrite) return;
     let last = null;
-    try { last = localStorage.getItem('optima-last-project'); } catch { /* optional */ }
+    try { last = localStorage.getItem('cortex-last-project'); } catch { /* optional */ }
     const fallback = projects.find((p) => p.id === last && !p.archived)?.id;
     setModal({ type: 'task', defaults: { projectId: currentProjectId || fallback, ...defaults } });
   }, [canWrite, currentProjectId, projects]);

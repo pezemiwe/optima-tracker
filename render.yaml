@@ -1,4 +1,4 @@
-# Render Blueprint for the Optima Work Tracker.
+# Render Blueprint for Cortex Tracker. Service and database identifiers keep their original names so existing deployments are not recreated.
 # Render > New > Blueprint > pick this repository.
 databases:
   - name: optima-db

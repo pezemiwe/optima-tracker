@@ -10,7 +10,7 @@ function applyTheme(theme) {
 }
 
 const storedTheme = () => {
-  try { return localStorage.getItem('optima-theme') || 'system'; } catch { return 'system'; }
+  try { return localStorage.getItem('cortex-theme') || 'system'; } catch { return 'system'; }
 };
 
 export function AuthProvider({ children }) {
@@ -38,13 +38,13 @@ export function AuthProvider({ children }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const onSignedOut = () => goAnonymous();
-    window.addEventListener('optima:signed-out', onSignedOut);
-    return () => window.removeEventListener('optima:signed-out', onSignedOut);
+    window.addEventListener('cortex:signed-out', onSignedOut);
+    return () => window.removeEventListener('cortex:signed-out', onSignedOut);
   }, [goAnonymous]);
 
   useEffect(() => {
     applyTheme(theme);
-    try { localStorage.setItem('optima-theme', theme); } catch { /* optional */ }
+    try { localStorage.setItem('cortex-theme', theme); } catch { /* optional */ }
     if (theme !== 'system') return undefined;
     const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
     const onChange = () => applyTheme('system');

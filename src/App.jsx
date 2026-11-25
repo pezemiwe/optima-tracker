@@ -42,7 +42,7 @@ function WorkspaceRoutes({ slug }) {
 
 function WorkspaceScreen({ path, slug }) {
   const { ready, loadError, workspace } = useWorkspace();
-  useEffect(() => { try { localStorage.setItem('optima-last-ws', slug); } catch { /* optional */ } }, [slug]);
+  useEffect(() => { try { localStorage.setItem('cortex-last-ws', slug); } catch { /* optional */ } }, [slug]);
   if (loadError) {
     return <div className="grid min-h-screen place-items-center bg-[#f4f5f7] dark:bg-[#0c0e11]"><EmptyState action={<button className="btn btn-primary" onClick={() => window.location.reload()} type="button">Reload</button>} icon="warning" title="Could not load this workspace">{loadError.message}</EmptyState></div>;
   }

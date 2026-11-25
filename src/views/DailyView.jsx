@@ -6,7 +6,7 @@ import ListView from './ListView.jsx';
 
 export default function DailyView({ tasks, pd, actions, filters, canWrite, selection, onSelect, onSelectAll, onOpen, activeNumber }) {
   const today = toISODate();
-  const [day, setDay] = useLocalStorage(`optima-day-${pd.summary.id}`, today);
+  const [day, setDay] = useLocalStorage(`cortex-day-${pd.summary.id}`, today);
   const confirm = useConfirm();
   const toast = useToast();
   const dayTasks = useMemo(() => tasks.filter((t) => t.dueDate === day && !t.parentId), [tasks, day]);

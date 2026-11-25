@@ -140,14 +140,14 @@ export default function ProjectPage({ projectKey, view }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [taskParam, setTaskParam] = useQueryParam('task');
-  const [stored, setStored] = useLocalStorage(`optima-filters-${pd.summary?.id || 'none'}`, DEFAULT_FILTERS);
+  const [stored, setStored] = useLocalStorage(`cortex-filters-${pd.summary?.id || 'none'}`, DEFAULT_FILTERS);
   const filters = normaliseFilters(stored);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selection, setSelection] = useState(() => new Set());
   const base = `/w/${workspace.slug}/p/${projectKey}`;
 
   useEffect(() => { setSelection(new Set()); }, [view, projectKey]);
-  useEffect(() => { try { localStorage.setItem('optima-last-ws', workspace.slug); } catch { /* optional */ } }, [workspace.slug]);
+  useEffect(() => { try { localStorage.setItem('cortex-last-ws', workspace.slug); } catch { /* optional */ } }, [workspace.slug]);
 
   const setFilter = (patch) => setStored({ ...filters, ...patch });
   const ctx = useMemo(() => ({ statusById: pd.statusById, meId: user.id, today: toISODate(), activeSprintId: pd.activeSprint?.id }), [pd.statusById, user.id, pd.activeSprint]);

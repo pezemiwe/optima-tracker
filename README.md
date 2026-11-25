@@ -1,6 +1,6 @@
-# Optima Work Tracker
+# Cortex Tracker
 
-A project and task tracker in the spirit of Jira, ClickUp and Asana, built for the Zenith Optima close-out and ready to grow beyond it.
+A project and task tracker for teams: planning, boards, sprints, timelines, collaboration and reporting.
 One Node server, one Postgres database, and a React frontend styled with Tailwind CSS. Deploys to Render from this folder.
 
 ## What it does
@@ -65,7 +65,7 @@ npm run build && npm run e2e   # real browser: Playwright + axe accessibility sc
 ## Deploy on Render
 
 1. Push this folder to a **private** GitHub repository.
-2. In Render choose **New > Blueprint**, connect GitHub, and pick the repository. Render reads `render.yaml` and proposes a web service `optima-tracker` and a Postgres database `optima-db`.
+2. In Render choose **New > Blueprint**, connect GitHub, and pick the repository. Render reads `render.yaml` and proposes a web service `optima-tracker` (kept so existing deployments are not recreated) and a Postgres database `optima-db`.
 3. Click **Apply**. When the service is live, open its URL. You are asked to **set up the workspace**: create the owner account there.
 4. Open **Workspace settings > Members** to invite the team.
 
@@ -80,7 +80,7 @@ Without email everything still works: invite links and password-reset links are 
 | Variable | Meaning |
 |---|---|
 | `SMTP_URL` | e.g. `smtps://user:password@smtp.example.com:465`. Any SMTP provider works (Resend, Postmark, SES, Microsoft 365, Gmail app password). |
-| `MAIL_FROM` | The sender, e.g. `Optima Tracker <no-reply@yourcompany.com>`. |
+| `MAIL_FROM` | The sender, e.g. `Cortex Tracker <no-reply@yourcompany.com>`. |
 | `APP_URL` | The public address, used for links in emails. Defaults to Render's `RENDER_EXTERNAL_URL`. |
 
 ### Environment variables
@@ -128,5 +128,5 @@ To use an existing database instead of creating one, delete the `databases:` blo
 
 - Attachments live in Postgres (up to 10 MB each, 25 per task), which keeps deployment simple but is not meant for very large file libraries.
 - Updates from other people arrive within about 5 seconds, by polling rather than a live socket.
-- Not built: epics, time tracking, goals and docs, automation rules, integrations (Slack, GitHub), API tokens and webhooks, SSO and two-factor sign-in, per-project permissions and guests, import from Jira or CSV.
+- Not built: epics, time tracking, goals and docs, automation rules, integrations (Slack, GitHub), API tokens and webhooks, SSO and two-factor sign-in, per-project permissions and guests, import from other tools or CSV.
 - Burndown for a sprint is computed from each task's completion time and does not track tasks that were moved in or out after the sprint started.

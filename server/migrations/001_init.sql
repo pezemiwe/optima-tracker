@@ -1,4 +1,4 @@
--- Optima Work Tracker: relational schema (v1)
+-- Cortex Tracker: relational schema (v1)
 
 CREATE TABLE users (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

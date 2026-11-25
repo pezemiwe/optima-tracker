@@ -1,6 +1,6 @@
 'use strict';
 /*
- * Optima Work Tracker server.
+ * Cortex Tracker server.
  * Express + Postgres JSON API with cookie sessions, serving the React app from dist/.
  */
 const { makePool, migrate } = require('./server/db');
@@ -18,7 +18,7 @@ async function main() {
   const mailer = createMailer();
   startEmailWorker(pool, mailer);
   console.log(mailer.enabled ? 'Email is enabled.' : 'Email is not configured (SMTP_URL unset); invite and reset links are shown to admins.');
-  createApp(pool, { mailer }).listen(PORT, '0.0.0.0', () => console.log(`Optima Work Tracker listening on ${PORT}.`));
+  createApp(pool, { mailer }).listen(PORT, '0.0.0.0', () => console.log(`Cortex Tracker listening on ${PORT}.`));
 }
 
 module.exports = { createApp, migrate, makePool };

@@ -17,7 +17,7 @@ const clientApi = (page) => (method, url, body) => page.evaluate(async ([m, u, b
 }, [method, url, body]);
 
 test.before(async () => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'optima-e2e-'));
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-e2e-'));
   fs.writeFileSync(path.join(tmp, 'notes.txt'), 'meeting notes\n');
   fs.writeFileSync(path.join(tmp, 'pixel.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
   env = await boot();

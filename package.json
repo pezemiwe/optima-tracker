@@ -1,8 +1,8 @@
 {
-  "name": "optima-closeout-tracker",
+  "name": "cortex-tracker",
   "version": "1.0.0",
   "private": true,
-  "description": "Optima Work Tracker: projects, tasks, boards and calendars for teams",
+  "description": "Cortex Tracker: projects, tasks, boards and calendars for teams",
   "main": "server.js",
   "scripts": {
     "dev": "vite",

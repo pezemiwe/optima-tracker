@@ -66,7 +66,7 @@ export default function NewTaskModal({ defaults = {}, onClose, onCreated }) {
       };
       const { task } = await api.post(`/projects/${projectId}/tasks`, body);
       await sync();
-      try { localStorage.setItem('optima-last-project', projectId); } catch { /* optional */ }
+      try { localStorage.setItem('cortex-last-project', projectId); } catch { /* optional */ }
       toast.success(`Created ${task.projectKey}-${task.number}`);
       onCreated?.(task, bundle.project);
       if (another) {

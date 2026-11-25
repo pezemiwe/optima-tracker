@@ -25,7 +25,7 @@ async function request(method, path, body) {
   if (!response.ok) {
     // A 401 anywhere except the sign-in calls themselves means the session ended.
     if (response.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/register') && !path.startsWith('/auth/me')) {
-      window.dispatchEvent(new Event('optima:signed-out'));
+      window.dispatchEvent(new Event('cortex:signed-out'));
     }
     throw new ApiError(json?.error || `Request failed (${response.status}).`, response.status, json?.code, json);
   }

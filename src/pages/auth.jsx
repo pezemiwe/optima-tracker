@@ -7,7 +7,7 @@ import { useAuth } from '../state/auth.jsx';
 
 export function defaultWorkspacePath(workspaces) {
   let last = null;
-  try { last = localStorage.getItem('optima-last-ws'); } catch { /* optional */ }
+  try { last = localStorage.getItem('cortex-last-ws'); } catch { /* optional */ }
   const ws = workspaces.find((w) => w.slug === last) || workspaces[0];
   return ws ? `/w/${ws.slug}` : '/welcome';
 }
@@ -18,7 +18,7 @@ function AuthLayout({ title, subtitle, children, footer }) {
       <aside className="relative hidden overflow-hidden bg-[#0b0d10] p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="flex items-center gap-3">
           <span className="relative grid size-9 place-items-center rounded-lg bg-[#86bc25] after:absolute after:size-2.5 after:rounded-full after:bg-black" />
-          <span className="text-lg font-semibold tracking-tight">Optima Work Tracker</span>
+          <span className="text-lg font-semibold tracking-tight">Cortex Tracker</span>
         </div>
         <div>
           <h2 className="max-w-md text-4xl font-semibold leading-tight tracking-tight">Plan the work. Track it to done.</h2>
@@ -28,14 +28,14 @@ function AuthLayout({ title, subtitle, children, footer }) {
             ))}
           </ul>
         </div>
-        <p className="text-sm text-slate-400">Zenith Optima · Close-out programme</p>
+        <p className="text-sm text-slate-400">Plan, track and ship work</p>
         <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-[#86bc25]/10 blur-3xl" />
       </aside>
       <main className="grid place-items-center px-5 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <span className="relative grid size-9 place-items-center rounded-lg bg-[#86bc25] after:absolute after:size-2.5 after:rounded-full after:bg-black" />
-            <span className="text-lg font-semibold tracking-tight">Optima Work Tracker</span>
+            <span className="text-lg font-semibold tracking-tight">Cortex Tracker</span>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           {subtitle && <p className="muted mt-1.5 text-sm">{subtitle}</p>}
