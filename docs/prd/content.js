@@ -377,7 +377,7 @@ const modules = [
     code: 'BRN', name: 'Brand and platform housekeeping',
     goal: 'Make the product consistent with its new name.',
     rows: [
-      ['01', 'The product is named Cortex Tracker in the interface, emails, page titles, package and documents. Deployment identifiers (service and database names) keep their original names so an existing hosted deployment is not recreated; browser storage keys and the session cookie use the new name, so people sign in once more after the change.', 'M', 'D', 'No user-facing "Optima" strings remain except imported data and workspace names chosen by customers.'],
+      ['01', 'The product is named Cortex Tracker in the interface, emails, page titles, package and documents. Deployment identifiers (service and database names) keep their original names so an existing hosted deployment is not recreated; browser storage keys and the session cookie use the new name, so people sign in once more after the change.', 'M', 'D', 'No screen, email or page title uses the old working name; only imported data and customer-chosen workspace names may.'],
       ['02', 'Trademark and domain check for "Cortex Tracker" before public launch.', 'M', 'N', 'Legal clearance recorded.'],
     ],
   },
