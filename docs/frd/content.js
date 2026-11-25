@@ -1,14 +1,14 @@
 'use strict';
-/* Content for the enhanced LIT SuperApp Admin Portal FRD.
+/* Content for the enhanced Cortex SuperApp Admin Portal FRD.
    Everything marked src:true comes from the supplied v2.4 document; everything else is a proposal to be confirmed. */
-const doc = { title: 'LIT SuperApp Admin Portal', subtitle: 'Functional Requirements Definition', client: 'FirstBank', version: '3.0 (enhanced draft)', date: '25/11/2026', basis: 'v2.4, 26/03/2025' };
+const doc = { title: 'Cortex SuperApp Admin Portal', subtitle: 'Functional Requirements Definition', client: 'FirstBank', version: '3.0 (enhanced draft)', date: '25/11/2026', basis: 'v2.4, 26/03/2025' };
 
 const history = [
   ['2.0', 'Emmanuel O. Adesina', '02/06/2023', 'Updated with Phase 2 features'],
   ['2.1', 'Jude Frank', '21/07/2023', 'Definition and permission update'],
   ['2.2', 'Jude Frank', '15/07/2024', 'Admin Portal refresh'],
-  ['2.3', 'Jude Frank', '13/12/2024', 'LIT SuperApp Admin Portal'],
-  ['2.4', 'Jude Frank', '26/03/2025', 'LIT SuperApp Admin Portal update'],
+  ['2.3', 'Jude Frank', '13/12/2024', 'Cortex SuperApp Admin Portal'],
+  ['2.4', 'Jude Frank', '26/03/2025', 'Cortex SuperApp Admin Portal update'],
   ['3.0', 'Enhancement draft', '25/11/2026', 'Restructured and enhanced: shared approval workflow, role matrix, acceptance criteria, traceability, measurable quality targets, review findings. Awaiting product owner review.'],
 ];
 
@@ -72,15 +72,15 @@ const uc = [
     flow: [['Selects Users, then User Management', 'Displays the User Management screen'], ['Clicks Edit', 'Displays the Edit User screen'], ['Clicks Remove Dormancy', 'Shows a success message and sends the request to the approver']],
     rules: ['The request shows as Pending until an approver acts.'],
     ac: ['The dormancy threshold (90 days) is configurable and evaluated against the last successful login.', 'After approval the user is Active and the 90-day clock restarts.'] },
-  { id: '013', name: 'Lock profile', fr: 'FR013', br: 'BR015', pri: ['High', false], approval: 'Not required', pre: ['User is logged in', 'Customer is registered on LIT'],
+  { id: '013', name: 'Lock profile', fr: 'FR013', br: 'BR015', pri: ['High', false], approval: 'Not required', pre: ['User is logged in', 'Customer is registered on Cortex'],
     flow: [['Selects Customer Management, then the Customer Management tab', 'Displays a search field for account number or username'], ['Enters account number or username and submits', 'Displays customer information with a Continue option'], ['Clicks Continue', 'Displays the customer management screen'], ['Clicks Profile Management', 'Displays the lock-profile page'], ['Selects a reason: Customer requested, or Other (and enters the reason)', 'Shows a free-text field when Other is chosen'], ['Clicks Lock Profile', 'Asks for confirmation'], ['Confirms', 'Shows a success message, locks the profile and disables scheduled payments']],
     rules: ['This action does not require an approver.'],
     ac: ['The profile is locked immediately and the customer cannot sign in on mobile channels.', 'Reason, actor and time are recorded in the audit trail.'] },
-  { id: '014', name: 'Unlock profile', fr: 'FR014', br: 'BR016', pri: ['High', true], approval: 'Required', queue: 'Customer Management › Profile Requests', pre: ['User is logged in', 'Customer is registered on LIT'],
+  { id: '014', name: 'Unlock profile', fr: 'FR014', br: 'BR016', pri: ['High', true], approval: 'Required', queue: 'Customer Management › Profile Requests', pre: ['User is logged in', 'Customer is registered on Cortex'],
     flow: [['Selects Customer Management, then the Customer Management tab', 'Displays a search field for account number or username'], ['Enters account number or username and submits', 'Displays customer information with a Continue option'], ['Clicks Continue, then Profile Management', 'Displays the unlock-profile page'], ['Selects a reason: Customer requested, or Other (and enters the reason)', 'Shows a free-text field when Other is chosen'], ['Clicks Unlock Profile and confirms', 'Shows a success message and initiates the unlock request']],
     rules: ['The request shows as Pending until a permitted approver acts.', 'Approved requests appear under the Approved Requests tab.'],
     ac: ['The profile stays locked until the request is approved.', 'Scheduled payments disabled at lock time are not silently re-enabled (see open item O-08).'] },
-  { id: '015', name: 'Release device', fr: 'FR015', br: 'BR017', pri: ['High', true], approval: 'Required', queue: 'Customer Management › Device Requests', pre: ['User is logged in', 'Customer is registered on LIT'],
+  { id: '015', name: 'Release device', fr: 'FR015', br: 'BR017', pri: ['High', true], approval: 'Required', queue: 'Customer Management › Device Requests', pre: ['User is logged in', 'Customer is registered on Cortex'],
     flow: [['Selects Customer Management, then the Customer Management tab', 'Displays a search field for account number or username'], ['Enters account number or username and submits', 'Displays the customer management screen'], ['Selects the Device Management tab', 'Displays device model, device ID, date enrolled and a Release button'], ['Clicks Release', 'Displays a confirmation page'], ['Clicks Yes', 'Shows a success message and sends the request to the approver']],
     rules: ['The request shows as Pending until a permitted approver acts.', 'Approved requests appear under the Approved Requests tab.'], freq: 'Anytime',
     ac: ['After approval the customer can enrol a new device and the old device is no longer trusted.'] },
@@ -157,6 +157,6 @@ const findings = [
 ];
 
 const glossary = [['AD', 'Active Directory, the bank’s staff directory used to authenticate staff'], ['SOL ID', 'Service outlet (branch) identifier used to scope what a staff member can see'], ['Maker-checker', 'A control in which one person initiates a change and a different person approves it'],
-  ['LIT', 'The bank’s mobile banking application whose customers the portal supports'], ['Dormant user', 'A portal user with no login for 90 days'], ['Initiator / Approver', 'The maker and checker roles in a request'], ['FRD', 'Functional Requirements Definition']];
+  ['Cortex', 'The bank’s mobile banking application whose customers the portal supports'], ['Dormant user', 'A portal user with no login for 90 days'], ['Initiator / Approver', 'The maker and checker roles in a request'], ['FRD', 'Functional Requirements Definition']];
 
 module.exports = { doc, history, br, uc, roles, matrix, fr, nfr, findings, glossary };

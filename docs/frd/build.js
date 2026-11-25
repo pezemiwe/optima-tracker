@@ -1,10 +1,10 @@
 'use strict';
-/* Builds docs/LIT-SuperApp-Admin-Portal-FRD.pdf.  node docs/frd/build.js
+/* Builds docs/Cortex-SuperApp-Admin-Portal-FRD.pdf.  node docs/frd/build.js
    Logo: put the official Deloitte logo (SVG or PNG, supplied by Deloitte brand) at docs/frd/assets/deloitte-logo.svg|png.
    Without it, the cover shows a clearly labelled placeholder: the logo is not reproduced from memory. */
 const fs = require('node:fs'); const path = require('node:path'); const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright'); const C = require('./content');
-const HTML = path.join(__dirname, 'document.html'); const PDF = path.join(__dirname, '..', 'LIT-SuperApp-Admin-Portal-FRD.pdf');
+const HTML = path.join(__dirname, 'document.html'); const PDF = path.join(__dirname, '..', 'Cortex-SuperApp-Admin-Portal-FRD.pdf');
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const table = (head, rows, cls = '', w = []) => `<table class="${cls}"><colgroup>${w.map((x) => `<col style="width:${x}">`).join('')}</colgroup><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 const tag = (t) => (t === 'Src' ? '<span class="chip src">v2.4</span>' : '<span class="chip new">Proposed</span>');
@@ -32,7 +32,7 @@ const sections = [];
 /* 1 */
 sections.push(`<section>${h1('Introduction')}
 ${h2('Purpose of this document')}
-<p>This Functional Requirements Definition (FRD) describes the workings of the ${C.doc.title}. The portal supports the ${C.doc.client} LIT application so that the Customer Support Team (FirstContact and Customer Service Officers) can:</p>
+<p>This Functional Requirements Definition (FRD) describes the workings of the ${C.doc.title}. The portal supports the ${C.doc.client} Cortex application so that the Customer Support Team (FirstContact and Customer Service Officers) can:</p>
 <ul><li>carry out basic enquiries on customers’ transaction history;</li><li>troubleshoot customer complaints;</li><li>lock and unlock customer profiles on the mobile app channels when required.</li></ul>
 <p>It records the requirements as defined by the relevant stakeholders. The intended audience is the project sponsor, project manager, project team, IT, ISOD, Internal Control, FirstContact and any stakeholder whose input or approval is needed.</p>
 ${h2('What changed from v2.4')}
@@ -50,9 +50,9 @@ ${h2('What changed from v2.4')}
 sections.push(`<section>${h1('Business requirement overview')}
 ${table(['ID', 'Description'], C.br.flatMap(([g, rows]) => [[`<span class="grp"></span>`, `<b>${esc(g)}</b>`], ...rows.map(([i, d]) => [`<code>${i}</code>`, esc(d)])]).map((r, i) => r), 'kv2', ['16%', '84%']).replace(/<tr><td><span class="grp"><\/span><\/td><td>/g, '<tr><td class="grp"></td><td class="grp">')}
 ${h2('Assumptions and constraints')}
-<ol><li>Details of a customer can only be viewed on the admin dashboard if the customer is registered on LIT. ${tag('Src')}</li><li>Approvers and viewers can see initiated items with only the same SOL ID. ${tag('Src')}</li><li>99.9% network uptime for the intranet and for the solution’s web service API. ${tag('Src')}</li><li>There will be no breach of data security. ${tag('Src')}</li></ol>
+<ol><li>Details of a customer can only be viewed on the admin dashboard if the customer is registered on Cortex. ${tag('Src')}</li><li>Approvers and viewers can see initiated items with only the same SOL ID. ${tag('Src')}</li><li>99.9% network uptime for the intranet and for the solution’s web service API. ${tag('Src')}</li><li>There will be no breach of data security. ${tag('Src')}</li></ol>
 ${h2('Solution overview')}
-<p>The portal is a user-support platform for bank staff. It helps customers resolve complaints on the LIT app and helps prevent unauthorised use. It streamlines issue resolution and supports a secure and efficient banking experience.</p>
+<p>The portal is a user-support platform for bank staff. It helps customers resolve complaints on the Cortex app and helps prevent unauthorised use. It streamlines issue resolution and supports a secure and efficient banking experience.</p>
 <p class="note">Proposed addition: all changes that affect access, limits or customer devices use a maker-checker approval, and every action is written to an audit trail. These two controls are the backbone of the requirements that follow.</p>
 </section>`);
 /* 3 */
@@ -114,7 +114,7 @@ sections.push(`<section>${h1('Review findings and decisions needed')}
 ${table(['Ref', 'Finding', 'Action in v3.0'], C.findings.map((f) => [`<code>${f[0]}</code>`, esc(f[1]), esc(f[2])]), '', ['8%', '58%', '34%'])}</section>`);
 /* appendices + approval */
 sections.push(`<section>${h1('Glossary', 'A')}${table(['Term', 'Meaning'], C.glossary.map((g) => [`<b>${g[0]}</b>`, esc(g[1])]), '', ['24%', '76%'])}
-${h1('Approval', 'B')}<p>The undersigned acknowledge they have reviewed the “LIT Admin Portal Refresh Functional Requirements Definition” version 3.0 and agree with the approach it presents. Any changes will be coordinated with and approved by the undersigned or their designated representatives.</p>
+${h1('Approval', 'B')}<p>The undersigned acknowledge they have reviewed the “Cortex Admin Portal Refresh Functional Requirements Definition” version 3.0 and agree with the approach it presents. Any changes will be coordinated with and approved by the undersigned or their designated representatives.</p>
 ${table(['Approver name', 'Department', 'Role', 'Signature', 'Date'], Array(6).fill(0).map(() => Array(5).fill('<span class="blank"></span>')), 'sign', ['24%', '20%', '20%', '24%', '12%'])}
 <p class="note">Signatures on v2.4 are not carried over. This version needs its own approvals.</p></section>`);
 
@@ -123,7 +123,7 @@ ${table(['Item', 'Detail'], [['Document', `${C.doc.title}: ${C.doc.subtitle}`], 
 <h3>Version history</h3>${table(['Version', 'Name', 'Date', 'Description of change'], C.history, '', ['10%', '24%', '14%', '52%'])}
 <div class="notice-box"><h2>Restricted use</h2><p><b>This document must not be used for research purposes.</b> It is provided solely for reviewing, approving and delivering the ${C.doc.title} project. It must not be used for research, benchmarking, academic or market study, training data, publication or any purpose other than the one stated.</p><p>It contains confidential information. Do not copy, quote, share or distribute it beyond the named project audience without written permission from the document owner.</p></div></section>`;
 const cover = `<section class="cover" style="break-before:auto"><div class="band"></div><div class="cover-in"><div class="logo-slot">${logoHtml}</div>
-<div><p class="eyebrow">${C.doc.subtitle}</p><h1>${C.doc.title}<span class="dot">.</span></h1><p class="cover-sub">Requirements for ${C.doc.client}’s customer-support and administration portal for the LIT app.</p></div>
+<div><p class="eyebrow">${C.doc.subtitle}</p><h1>${C.doc.title}<span class="dot">.</span></h1><p class="cover-sub">Requirements for ${C.doc.client}’s customer-support and administration portal for the Cortex app.</p></div>
 <div><div class="cover-meta"><div><span>Version</span><b>${C.doc.version.split(' ')[0]}</b></div><div><span>Date</span><b>${C.doc.date}</b></div><div><span>Client</span><b>${C.doc.client}</b></div><div><span>Status</span><b>Draft</b></div></div>
 <p class="cover-notice"><b>Restricted use.</b> Not to be used for research purposes. Confidential.</p></div></div></section>`;
 const renderToc = (pages) => `<section><h1 style="border:0;padding:0">Contents</h1>${toc.map((e) => `<div class="toc-row l${e.l}"><span>${esc(e.t)}</span><span class="dots"></span><span class="p">${pages ? (pages.get(e.t) ?? '') : '00'}</span></div>`).join('')}</section>`;

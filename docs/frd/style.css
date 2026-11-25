@@ -4,7 +4,7 @@
 @font-face { font-family: "PlexMono"; font-weight: 500; src: url("../../public/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2"); }
 :root { --green: #86BC25; --green-dark: #046A38; --black: #000; --grey: #53565A; --grey-mid: #BBBCBC; --grey-light: #F2F2F2; --ink: #1a1a1a; }
 @page { size: A4; margin: 20mm 17mm 22mm 17mm;
-  @bottom-left { content: "Restricted use: not to be used for research purposes  \00B7  LIT SuperApp Admin Portal FRD v3.0"; font: 400 7.3pt Plex, sans-serif; color: #53565A; }
+  @bottom-left { content: "Restricted use: not to be used for research purposes  \00B7  Cortex SuperApp Admin Portal FRD v3.0"; font: 400 7.3pt Plex, sans-serif; color: #53565A; }
   @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 400 7.5pt Plex, sans-serif; color: #53565A; } }
 @page cover { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }
 * { box-sizing: border-box; }
