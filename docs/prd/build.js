@@ -312,7 +312,6 @@ ${table(['Item', 'Detail'], [
 ${table(['Version', 'Date', 'Author', 'Change'], [['1.0', '24 November 2026', 'Product', 'First draft'], [C.doc.version, C.doc.date, 'Product', 'Rewritten for developers: capability list, detailed specifications, business rules, data dictionary, API reference, screens and test scenarios.']], 'compact', ['12%', '20%', '18%', '50%'])}
 <h3>Approvals</h3>
 ${table(['Role', 'Name', 'Signature', 'Date'], ['Product owner', 'Engineering lead', 'Security lead', 'Sponsor'].map((r) => [r, '<span class="blank"></span>', '<span class="blank"></span>', '<span class="blank"></span>']), 'compact sign', ['25%', '30%', '30%', '15%'])}
-<div class="notice-box"><h2>Restricted use</h2><p><b>This document must not be used for research purposes.</b> It is provided solely for reviewing, approving and delivering the Cortex Tracker product. It must not be used for research, benchmarking, academic or market study, training data, publication or any other purpose.</p><p>It contains confidential information. Do not copy, quote or distribute it beyond the named audience without written permission from the document owner.</p></div>
 <h3>How to read this document</h3>
 <div class="legend-grid">
   <div><b>Status</b><br>${chip('Built', 'st-d')} in the product now and tested<br>${chip('Partial', 'st-p')} present with a known limitation<br>${chip('Planned', 'st-n')} not built yet</div>
@@ -329,8 +328,7 @@ const logoFile = ['svg', 'png'].map((e) => path.join(__dirname, '..', 'frd', 'as
 const logoHtml = logoFile ? `<img alt="Deloitte" src="data:${logoFile.endsWith('svg') ? 'image/svg+xml' : 'image/png'};base64,${fs.readFileSync(logoFile).toString('base64')}">` : '<div class="logo-ph"><b>[ Deloitte logo ]</b>Official artwork to be placed here<br>(docs/frd/assets/deloitte-logo.svg)</div>';
 const cover = `<section class="cover" style="break-before:auto"><div class="band"></div><div class="cover-in"><div class="logo-slot">${logoHtml}</div>
 <div><p class="eyebrow">Business and Product Requirements Document</p><h1>Cortex Tracker<span class="dot2">.</span></h1><p class="cover-sub">What to build, how it must behave, and how to prove it works: a complete requirements document for a work-management product.</p></div>
-<div><div class="cover-meta"><div><span>Version</span><b>${C.doc.version}</b></div><div><span>Date</span><b>${C.doc.date}</b></div><div><span>Status</span><b>${C.doc.status}</b></div><div><span>Classification</span><b>Restricted</b></div></div>
-<p class="cover-notice"><b>Restricted use.</b> Not to be used for research purposes. Confidential.</p></div></div></section>`;
+<div><div class="cover-meta"><div><span>Version</span><b>${C.doc.version}</b></div><div><span>Date</span><b>${C.doc.date}</b></div><div><span>Status</span><b>${C.doc.status}</b></div><div><span>Classification</span><b>Restricted</b></div></div></div></div></section>`;
 
 const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 const buildHtml = (pages) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Cortex Tracker: Business and Product Requirements Document</title><style>${css}</style></head><body>${cover}${frontMatter}${renderToc(pages)}${sections.join('\n')}</body></html>`;

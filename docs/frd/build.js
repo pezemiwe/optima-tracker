@@ -120,12 +120,10 @@ ${table(['Approver name', 'Department', 'Role', 'Signature', 'Date'], Array(6).f
 
 const front = `<section><h1 style="border:0;padding:0;margin-bottom:4mm">Document control</h1>
 ${table(['Item', 'Detail'], [['Document', `${C.doc.title}: ${C.doc.subtitle}`], ['Client', C.doc.client], ['Version', C.doc.version], ['Date', C.doc.date], ['Based on', C.doc.basis], ['Status', 'Draft for product owner review'], ['Classification', 'Restricted']], 'kv', ['30%', '70%'])}
-<h3>Version history</h3>${table(['Version', 'Name', 'Date', 'Description of change'], C.history, '', ['10%', '24%', '14%', '52%'])}
-<div class="notice-box"><h2>Restricted use</h2><p><b>This document must not be used for research purposes.</b> It is provided solely for reviewing, approving and delivering the ${C.doc.title} project. It must not be used for research, benchmarking, academic or market study, training data, publication or any purpose other than the one stated.</p><p>It contains confidential information. Do not copy, quote, share or distribute it beyond the named project audience without written permission from the document owner.</p></div></section>`;
+<h3>Version history</h3>${table(['Version', 'Name', 'Date', 'Description of change'], C.history, '', ['10%', '24%', '14%', '52%'])}</section>`;
 const cover = `<section class="cover" style="break-before:auto"><div class="band"></div><div class="cover-in"><div class="logo-slot">${logoHtml}</div>
 <div><p class="eyebrow">${C.doc.subtitle}</p><h1>${C.doc.title}<span class="dot">.</span></h1><p class="cover-sub">Requirements for ${C.doc.client}’s customer-support and administration portal for the Cortex app.</p></div>
-<div><div class="cover-meta"><div><span>Version</span><b>${C.doc.version.split(' ')[0]}</b></div><div><span>Date</span><b>${C.doc.date}</b></div><div><span>Client</span><b>${C.doc.client}</b></div><div><span>Status</span><b>Draft</b></div></div>
-<p class="cover-notice"><b>Restricted use.</b> Not to be used for research purposes. Confidential.</p></div></div></section>`;
+<div><div class="cover-meta"><div><span>Version</span><b>${C.doc.version.split(' ')[0]}</b></div><div><span>Date</span><b>${C.doc.date}</b></div><div><span>Client</span><b>${C.doc.client}</b></div><div><span>Status</span><b>Draft</b></div></div></div></div></section>`;
 const renderToc = (pages) => `<section><h1 style="border:0;padding:0">Contents</h1>${toc.map((e) => `<div class="toc-row l${e.l}"><span>${esc(e.t)}</span><span class="dots"></span><span class="p">${pages ? (pages.get(e.t) ?? '') : '00'}</span></div>`).join('')}</section>`;
 const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 const html = (p) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${C.doc.title}: ${C.doc.subtitle}</title><style>${css}</style></head><body>${cover}${front}${renderToc(p)}${sections.join('\n')}</body></html>`;
