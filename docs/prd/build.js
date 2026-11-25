@@ -9,6 +9,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const C = require('./content');
+const C_SPEC = require('./spec');
 
 const OUT_DIR = path.join(__dirname, '..');
 const HTML = path.join(__dirname, 'document.html');
@@ -17,26 +18,15 @@ const PDF = path.join(OUT_DIR, 'Cortex-Tracker-BRD-PRD.pdf');
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
 
-const STATUS = { D: ['Delivered', 'st-d'], P: ['Partial', 'st-p'], N: ['Planned', 'st-n'], X: ['Out of scope', 'st-x'] };
+const STATUS = { D: ['Built', 'st-d'], P: ['Partial', 'st-p'], N: ['Planned', 'st-n'], X: ['Out of scope', 'st-x'] };
 const PRIORITY = { M: 'Must', S: 'Should', C: 'Could', W: "Won't" };
-const RELEASE_IDX = { R1: 1, 'R1.1': 1.1, R2: 2, R3: 3, R4: 4, R5: 5 };
 
 /* ---------- derived numbers ---------- */
-const allReqs = C.modules.flatMap((m) => m.rows.map((r) => ({ module: m, id: `FR-${m.code}-${r[0]}`, text: r[1], pri: r[2], status: r[3], release: r[4] })));
+const allReqs = C.modules.flatMap((m) => m.rows.map((r) => ({ module: m, id: `FR-${m.code}-${r[0]}`, text: r[1], pri: r[2], status: r[3], })));
 const total = allReqs.length;
 const count = (s) => allReqs.filter((r) => r.status === s).length;
 const delivered = count('D'); const partial = count('P'); const planned = count('N');
 const pct = (n) => Math.round((n / total) * 100);
-
-const parityRows = C.parity.flatMap(([, rows]) => rows);
-const score = (col) => parityRows.reduce((n, r) => n + { F: 1, P: 0.5, N: 0 }[r[col]], 0) / parityRows.length;
-const cortexAt = (k) => parityRows.reduce((n, r) => {
-  const now = r[4];
-  if (now === 'F') return n + 1;
-  if (RELEASE_IDX[r[5]] <= k) return n + 1;
-  return n + (now === 'P' ? 0.5 : 0);
-}, 0) / parityRows.length;
-const parityCounts = { F: parityRows.filter((r) => r[4] === 'F').length, P: parityRows.filter((r) => r[4] === 'P').length, N: parityRows.filter((r) => r[4] === 'N').length };
 
 /* ---------- heading registry for the contents page ---------- */
 const toc = [];
@@ -74,12 +64,12 @@ ${arrow(270, 118, 175, 118, 'JSON')}
 ${arrow(470, 62, 565, 62, 'SQL')}
 ${arrow(565, 118, 470, 118, 'rows')}
 ${box(5, 205, 170, 70, 'SMTP provider', ['Invites, resets, digests'])}
-${box(190, 205, 170, 70, 'WebSocket gateway', ['Instant updates (R2)'], { planned: true })}
-${box(375, 205, 170, 70, 'Job queue and workers', ['Automations, webhooks (R2)'], { planned: true })}
-${box(560, 205, 175, 70, 'Object storage', ['Large files, scanning (R3)'], { planned: true })}
-${box(5, 290, 235, 60, 'Public API and webhooks', ['Tokens, scopes (R2)'], { planned: true })}
-${box(252, 290, 235, 60, 'Identity providers', ['SSO: SAML, OIDC (R3)'], { planned: true })}
-${box(499, 290, 236, 60, 'Integrations', ['Slack, Teams, GitHub, calendar (R4)'], { planned: true })}
+${box(190, 205, 170, 70, 'WebSocket gateway', ['Instant updates'], { planned: true })}
+${box(375, 205, 170, 70, 'Job queue and workers', ['Automations, webhooks'], { planned: true })}
+${box(560, 205, 175, 70, 'Object storage', ['Large files, virus scanning'], { planned: true })}
+${box(5, 290, 235, 60, 'Public API and webhooks', ['Tokens, scopes'], { planned: true })}
+${box(252, 290, 235, 60, 'Identity providers', ['Single sign-on (SAML, OpenID Connect)'], { planned: true })}
+${box(499, 290, 236, 60, 'Integrations', ['Chat, code and calendar tools'], { planned: true })}
 </svg>`;
 
 const dataModelSvg = (() => {
@@ -100,120 +90,150 @@ ${kids.map((k, i) => `${l(xs[i] + 69, 225, xs[i] + 69, 244)}${b(xs[i], 244, 138,
 </svg>`;
 })();
 
-const roadmapHtml = (() => {
-  const cols = ['Delivered', 'Q1 2027', 'Q2 2027', 'Q3 2027', 'Q4 2027'];
-  const rows = [
-    ['R1 Foundation', 1, 1, 'done'], ['R1.1 Rename', 2, 1, 'next'], ['R2 Automate', 2, 1, 'plan'],
-    ['R3 Secure', 3, 1, 'plan'], ['R4 Insight', 4, 1, 'plan'], ['R5 Intelligence', 5, 1, 'plan'],
-  ];
-  return `<div class="roadmap"><div class="rm-head">${cols.map((c) => `<span>${c}</span>`).join('')}</div>${rows.map(([label, col, span, kind]) => `<div class="rm-row"><span class="rm-bar ${kind}" style="grid-column:${col} / span ${span}">${esc(label)}</span></div>`).join('')}</div>`;
+
+/* ---------- extracted facts: data dictionary and API, read from the code so they cannot drift ---------- */
+const ROOT = path.join(__dirname, '..', '..');
+const dataDictionary = (() => {
+  const dir = path.join(ROOT, 'server', 'migrations'); const tables = new Map();
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
+    const sql = fs.readFileSync(path.join(dir, f), 'utf8');
+    for (const m of sql.matchAll(/CREATE TABLE (\w+) \(([\s\S]*?)\n\);/g)) {
+      const cols = [];
+      for (const line of m[2].split('\n')) {
+        const t = line.trim().replace(/,$/, ''); if (!t || /^(PRIMARY KEY|UNIQUE|CHECK|FOREIGN|CONSTRAINT)/i.test(t) || t.startsWith('--')) continue;
+        const mm = /^(\w+)\s+((?:double precision|timestamptz|[a-z]+)(?:\(\d+\))?)(.*)$/i.exec(t); if (mm) cols.push([mm[1], mm[2], mm[3].trim()]);
+      }
+      tables.set(m[1], cols);
+    }
+    for (const m of sql.matchAll(/ALTER TABLE (\w+) ADD COLUMN (\w+) ((?:double precision|timestamptz|[a-z]+))(.*);/gi)) tables.get(m[1])?.push([m[2], m[3], m[4].trim()]);
+  }
+  return tables;
 })();
+const shortRule = (r) => r.replace(/DEFAULT gen_random_uuid\(\)/, '').replace(/REFERENCES (\w+)\(\w+\)( ON DELETE (CASCADE|SET NULL))?/, (a, t, x, d) => `→ ${t}${d ? ` (${d.toLowerCase()})` : ''}`).replace(/DEFAULT now\(\)/, 'default now').replace(/\s+/g, ' ').trim();
+const ddHtml = [...dataDictionary].map(([name, cols]) => `<div class="dd"><h4><code>${esc(name)}</code></h4><table class="dd-t"><tbody>${cols.map((c) => `<tr><td><b>${esc(c[0])}</b></td><td>${esc(c[1])}</td><td>${esc(shortRule(c[2]))}</td></tr>`).join('')}</tbody></table></div>`).join('');
 
-/* ---------- sections ---------- */
+const apiRoutes = (() => {
+  const dir = path.join(ROOT, 'server', 'routes'); const out = [];
+  const rank = { viewer: 'Viewer', member: 'Member', admin: 'Admin', owner: 'Owner' };
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+    const lines = fs.readFileSync(path.join(dir, f), 'utf8').split('\n');
+    lines.forEach((l, i) => {
+      const m = /router\.(get|post|put|patch|delete)\('([^']+)'/.exec(l); if (!m) return;
+      const block = lines.slice(i, i + 12).join('\n'); const r = /'(viewer|member|admin|owner)'/.exec(block);
+      const open = /^\/(auth\/(status|register|login|forgot|reset)|invites\/:token(?!\/accept))/.test(m[2]) || m[2] === '/auth/reset/:token';
+      out.push([f.replace('.js', ''), m[1].toUpperCase(), `/api${m[2]}`, open ? 'None' : (r ? `${rank[r[1]]}+` : 'Signed in')]);
+    });
+  }
+  return out;
+})();
+const apiGroups = { auth: 'Accounts and invitations', workspaces: 'Workspaces, members and invitations', projects: 'Projects, statuses and labels', tasks: 'Tasks', agile: 'Sprints and custom fields', collab: 'Comments, notifications, activity and saved views', files: 'Attachments and relations' };
+
+/* ---------- section helpers ---------- */
 const sections = [];
+const priLabel = (p) => PRIORITY[p];
+const detailHtml = (code) => {
+  const d = C_SPEC.detailSpecs.find((x) => x.code === code); if (!d) return '';
+  return `<div class="detail"><h3>Detailed specification: ${esc(d.title)}</h3><p>${esc(d.intro)}</p>${d.tables.map((t) => `<p class="meta"><b>${esc(t.title)}</b></p>${table(t.head, t.rows.map((r) => r.map((c) => esc(c))), 'compact', t.widths)}`).join('')}${d.lists.map((l) => `<p class="meta"><b>${esc(l.title)}</b></p>${list(l.items)}`).join('')}</div>`;
+};
 
+/* 1 */
 sections.push(`<section>${h1('Executive summary')}
-<p class="lead">Cortex Tracker is a work-management platform for teams that need what Jira, ClickUp and Asana offer, without the weight. It brings tasks, boards, sprints, timelines, collaboration and reporting into one fast product that a small team can deploy in minutes and own completely.</p>
+<p class="lead">Cortex Tracker is a work-management platform: tasks, boards, sprints, timelines, collaboration, automation and reporting in one fast product that a small team can deploy in minutes and own completely. A development team can build the whole product from this document, to the level of professional work-management products.</p>
 <div class="cards">
   <div class="card"><b>${C.modules.length}</b><span>capability modules</span></div>
-  <div class="card"><b>${total}</b><span>product requirements</span></div>
-  <div class="card ok"><b>${delivered}</b><span>delivered (${pct(delivered)}%)</span></div>
-  <div class="card"><b>${planned + partial}</b><span>planned or partial</span></div>
+  <div class="card"><b>${total}</b><span>numbered requirements</span></div>
+  <div class="card ok"><b>${delivered}</b><span>already built (${pct(delivered)}%)</span></div>
+  <div class="card"><b>${planned + partial}</b><span>still to build</span></div>
 </div>
-<h3>Where the product stands</h3>
+<h3>What exists and what remains</h3>
 ${list([
-  `**Release 1 is built and verified.** Accounts and roles, workspaces and invitations, projects, tasks with subtasks, dependencies and recurrence, custom fields, six views (list, board, backlog and sprints, timeline, calendar, daily), filters and saved views, comments and mentions, notifications with email, file attachments, markdown, dashboards, Excel export and conflict detection.`,
+  `**The foundation is built and verified.** Accounts and roles, workspaces and invitations, projects, tasks with subtasks, dependencies and recurrence, custom fields, six views (list, board, backlog and sprints, timeline, calendar, daily), filters and saved views, comments, mentions, notifications by app and email, file attachments, sprints with burndown, Excel export and a home dashboard.`,
   `**Quality evidence exists.** 77 automated API and logic tests and 17 browser scenarios run on every change; every main screen passes an accessibility scan in light and dark themes; a 10,000-task project is usable in about 0.3 seconds.`,
-  `**Against the market leaders,** Cortex Tracker fully covers ${parityCounts.F} of ${parityRows.length} capability areas today and partly covers ${parityCounts.P} more. The gaps are concentrated in automation, integrations, reporting, enterprise security and AI.`,
-  `**The working name in the code is still "Optima Work Tracker".** Renaming to Cortex Tracker is the first item in the plan (R1.1).`,
+  `**What remains** is concentrated in automation, a public API and integrations, import, reporting and time tracking, security controls for large organisations, richer task structure (types, multiple assignees, templates, trash) and assisted features. Each is fully specified in section 6.`,
+  `**The application is named Cortex Tracker** in the interface, emails, page titles and package.`,
 ])}
-<h3>What this document asks for</h3>
+<h3>How a developer should use this document</h3>
 ${list([
-  'Agree the business objectives and success measures (section 2).',
-  'Confirm positioning and the parity target against Jira, ClickUp and Asana (section 3).',
-  'Approve the requirement set and priorities (section 6) and the release plan (section 5).',
-  'Decide the open questions that change scope: commercial model, target audience, compliance regimes (section 11.4).',
+  '**Section 3** states the standard of capability the finished product must reach and what is built today.',
+  '**Section 6** lists every requirement with an identifier, priority, status and acceptance criterion, and gives a detailed specification (triggers, scopes, rules, formulas, limits) for each module not yet built.',
+  '**Section 7** gives the business rules, state machines and notification rules that every module must obey.',
+  '**Section 9** holds the data dictionary and API reference taken from the running code, and the tables to add.',
+  '**Sections 10 and 11** give screens, interface standards, and the acceptance scenarios that prove the product works.',
+  'Work in the priority order of each module (Must, then Should, then Could) and follow the dependency map in section 5.2.',
 ])}
 </section>`);
-
+/* 2 */
 sections.push(`<section>${h1('Business context')}
 ${h2('Problem statement')}
 ${list([
-  'Teams track work across spreadsheets, chat threads, email and several tools, so nobody has one trustworthy picture of what is late, blocked or next.',
-  'The market leaders solve this but bring cost: Jira is heavy to configure, ClickUp can overwhelm, and Asana gates advanced features behind higher plans.',
-  'Programme teams, such as the Zenith Optima close-out, need daily checklists, ownership and escalation, and have outgrown a simple tracker.',
+  'Teams track work across spreadsheets, chat threads, email and several tools, so nobody can see in one place what is late, blocked or next.',
+  'Professional work-management products solve this but bring cost, complexity or restrictive plans.',
+  'Programme teams, such as a close-out programme, need daily checklists, ownership and escalation, and outgrow a simple tracker.',
   'Organisations that must own their data or run in their own environment have few modern, low-effort options.',
 ])}
 ${h2('Vision and positioning')}
 <blockquote>${esc(C.positioning)}</blockquote>
 ${table(['Differentiator', 'What it means', 'Evidence'], C.differentiators.map((d) => [`<b>${esc(d[0])}</b>`, esc(d[1]), esc(d[2])]), 'compact', ['22%', '56%', '22%'])}
-<p class="note">Differentiators marked as hypotheses must be validated with pilot teams before they are used in marketing.</p>
 ${h2('Business requirements', 'Business requirements (BR) state why the product exists. Functional requirements in section 6 trace back to them (Appendix B).')}
 ${table(['ID', 'Requirement', 'Rationale', 'Measure of success'], C.businessRequirements.map((b) => [`<code>${b[0]}</code>`, `<b>${esc(b[1])}</b>`, esc(b[2]), esc(b[3])]), 'compact', ['8%', '22%', '40%', '30%'])}
 ${h2('Success metrics', 'Targets are proposals for the product owner to confirm. Baselines are marked "not yet measured" where no users have used the product at scale.')}
 ${table(['Metric', 'Definition', 'Baseline today', 'Target'], C.kpis.map((k) => [`<b>${esc(k[0])}</b>`, esc(k[1]), esc(k[2]), `<b>${esc(k[3])}</b>`]), 'compact', ['17%', '39%', '24%', '20%'])}
 </section>`);
-
-const parityHtml = C.parity.map(([cat, rows]) => `<tr class="cat"><td colspan="6">${esc(cat)}</td></tr>${rows.map((r) => `<tr><td>${esc(r[0])}</td><td class="c">${dot(r[1])}</td><td class="c">${dot(r[2])}</td><td class="c">${dot(r[3])}</td><td class="c now">${dot(r[4])}</td><td class="c">${r[4] === 'F' ? '<span class="muted">Done</span>' : chip(r[5], 'rel')}</td></tr>`).join('')}`).join('');
-
-sections.push(`<section>${h1('Competitive analysis')}
-<p class="note">Competitor information reflects publicly known capabilities at the time of writing and varies by plan. Re-verify before any external use.</p>
-${h2('The incumbents')}
-${table(['Product', 'Strengths', 'Typical friction', 'Implication for Cortex Tracker'], C.incumbents.map((i) => [`<b>${esc(i[0])}</b>`, esc(i[1]), esc(i[2]), esc(i[3])]), 'compact', ['11%', '30%', '28%', '31%'])}
-${h2('Capability parity matrix', 'Full, partial or no capability. "Cortex Tracker" is the current build; "Target" is the release that closes the gap.')}
-<table class="parity"><colgroup><col style="width:44%"><col style="width:10%"><col style="width:11%"><col style="width:10%"><col style="width:14%"><col style="width:11%"></colgroup>
-<thead><tr><th>Capability</th><th class="c">Jira</th><th class="c">ClickUp</th><th class="c">Asana</th><th class="c now">Cortex Tracker</th><th class="c">Target</th></tr></thead><tbody>${parityHtml}</tbody></table>
-<p class="legend"><span class="dot f"></span> Full &nbsp; <span class="dot p"></span> Partial &nbsp; <span class="dot n"></span> Not available</p>
-${h2('Where Cortex Tracker competes, and where not yet')}
-<p class="keep">Coverage score across the ${parityRows.length} capability areas (full = 1, partial = 0.5). Every area counts equally, so read it as a trend, not a verdict: the areas that matter most differ for each team.</p>
-<div class="bars">
-${bar('Jira', score(1), '#6b7a99')}${bar('ClickUp', score(2), '#6b7a99')}${bar('Asana', score(3), '#6b7a99')}
-${bar('Cortex Tracker today (R1)', cortexAt(1), '#86BC25')}${bar('after R2', cortexAt(2), '#86BC25')}${bar('after R3', cortexAt(3), '#86BC25')}${bar('after R4', cortexAt(4), '#86BC25')}${bar('after R5', cortexAt(5), '#86BC25')}
-</div>
-${list([
-  `**Strong today:** tasks, views, agile planning, collaboration and a self-hosted option. These cover the daily needs of most teams.`,
-  `**Largest gaps:** automation, public API and webhooks, integrations, dashboards and reports, enterprise security, and AI. Release 2 and 3 close the first three; Release 4 and 5 the rest.`,
-  `**Deliberately different:** a smaller surface than ClickUp, an easier setup than Jira, and agile depth that Asana lacks.`,
-])}
+/* 3 */
+const stateChip = (s) => ({ F: chip('Built', 'st-d'), P: chip('Partly built', 'st-p'), N: chip('To build', 'st-n') }[s]);
+sections.push(`<section>${h1('Capability standard')}
+<p>This is the standard the finished product must meet, by area. "Built" means present and verified today; "To build" means fully specified in section 6 but not yet in the product. A capability is complete only when every requirement behind it in section 6 passes its acceptance criterion.</p>
+${C_SPEC.capabilities.map(([cat, rows]) => `${h2(cat)}${table(['Capability', 'What "complete" means', 'Today'], rows.map((r) => [`<b>${esc(r[0])}</b>`, esc(r[1]), stateChip(r[2])]), 'compact', ['27%', '58%', '15%'])}`).join('')}
 </section>`);
-
+/* 4 */
 const permHtml = C.permissionRows.map((r) => `<tr><td>${esc(r[0])}</td>${r.slice(1).map((v) => `<td class="c">${v ? '<span class="yes">✓</span>' : '<span class="no">–</span>'}</td>`).join('')}</tr>`).join('');
 sections.push(`<section>${h1('Users, roles and permissions')}
 ${h2('Personas')}
 ${table(['Persona', 'Goal', 'Pain today', 'What they use'], C.personas.map((p) => [`<b>${esc(p[0])}</b>`, esc(p[1]), esc(p[2]), esc(p[3])]), 'compact', ['19%', '24%', '27%', '30%'])}
 ${h2('Role model and permission matrix', 'Roles apply per workspace and are enforced on every request. A workspace always has at least one Owner.')}
 <table class="perm"><colgroup><col style="width:58%"><col style="width:10.5%"><col style="width:10.5%"><col style="width:10.5%"><col style="width:10.5%"></colgroup><thead><tr><th>Capability</th><th class="c">Viewer</th><th class="c">Member</th><th class="c">Admin</th><th class="c">Owner</th></tr></thead><tbody>${permHtml}</tbody></table>
-<p class="note">Planned: guests, private projects and custom roles (FR-WSP-08, 09, 10).</p>
+<p class="note">Planned: guests, private projects, per-project roles and custom roles (FR-WSP-08, 09, 10). When added, a person’s effective permission on a project is the higher of their workspace role and their project role, except for private projects, where only project members have access.</p>
 </section>`);
-
-sections.push(`<section>${h1('Product scope and release plan')}
+/* 5 */
+const deps = [['AUT', 'none', 'Identity comes first'], ['WSP', 'AUT', 'Membership needs accounts'], ['PRJ', 'WSP', 'Projects live in workspaces'], ['TSK', 'PRJ', 'Tasks live in projects'], ['REL', 'TSK', 'Subtasks, relations, recurrence act on tasks'], ['FLD', 'PRJ, TSK', 'Fields belong to projects and hold task values'], ['VWS', 'TSK, FLD', 'Views render tasks and fields'], ['SPR', 'PRJ, TSK', 'Sprints group tasks'], ['SRC', 'TSK, FLD', 'Filters and queries cover fields'], ['COL', 'TSK', 'Comments and activity attach to tasks'], ['NTF', 'COL, TSK', 'Notifications come from task events'], ['FIL', 'TSK', 'Files attach to tasks'], ['TIM', 'TSK', 'Time is logged on tasks'], ['IMP', 'PRJ, TSK, FLD', 'Import creates tasks and values'], ['INT', 'all domain events', 'API and webhooks expose every event'], ['AUTO', 'TSK, FLD, NTF, INT', 'Rules react to events and call actions'], ['RPT', 'TSK, SPR, TIM', 'Reports aggregate tasks, sprints and time'], ['DOC', 'WSP, SRC', 'Pages need workspaces and search'], ['ADM', 'AUT, WSP', 'Policies govern sign-in and membership'], ['AI', 'SRC, COL', 'Assistance reads what search and comments hold'], ['BRN', 'none', 'Naming is independent']];
+sections.push(`<section>${h1('Product scope and build order')}
 ${h2('Scope')}
-<div class="two"><div><h3>In scope</h3>${list(C.inScope)}</div><div><h3>Out of scope for this horizon</h3>${list(C.outScope)}</div></div>
-${h2('Release plan', 'Dates are indicative planning aids and are reviewed at the end of each release.')}
-${roadmapHtml}
-<div style="break-before:page"></div>
-${table(['Release', 'Theme and timing', 'Contents', 'Exit criteria'], C.releases.map((r) => [`<b>${esc(r[0])}</b>`, `<b>${esc(r[1])}</b><br><span class="muted">${esc(r[2])}</span>`, esc(r[3]), esc(r[4])]), 'compact rel', ['8%', '20%', '48%', '24%'])}
+<div class="two"><div><h3>In scope</h3>${list(C.inScope)}</div><div><h3>Out of scope</h3>${list(C.outScope)}</div></div>
+${h2('Module dependency map', 'A module can be built once the modules it depends on exist. Within a module, build Must requirements first, then Should, then Could.')}
+${table(['Module', 'Build after', 'Why'], deps.map((d) => [`<code>${d[0]}</code> ${esc(C.modules.find((m) => m.code === d[0])?.name || '')}`, esc(d[1]), esc(d[2])]), 'compact', ['38%', '24%', '38%'])}
+<p class="note">Priorities: <b>Must</b> is required for the product to be useful; <b>Should</b> is important but not blocking; <b>Could</b> is valuable if capacity allows; <b>Won't</b> is excluded from this horizon.</p>
 </section>`);
-
+/* 6 */
 const moduleSections = () => C.modules.map((m) => {
   const mTotal = m.rows.length; const mDel = m.rows.filter((r) => r[3] === 'D').length;
-  const rows = m.rows.map((r) => {
-    const [label, cls] = STATUS[r[3]];
-    return [`<code>FR-${m.code}-${r[0]}</code>`, inline(r[1]), PRIORITY[r[2]], chip(label, cls), r[4], esc(r[5])];
-  });
-  return `<div class="module">${h2(m.name, m.goal)}<p class="meta">Prefix <code>FR-${m.code}</code> · ${mDel} of ${mTotal} delivered</p>${table(['ID', 'Requirement', 'Priority', 'Status', 'Release', 'Acceptance criteria'], rows, 'req', ['11%', '40%', '8%', '10%', '7.5%', '23.5%'])}</div>`;
+  const rows = m.rows.map((r) => { const [label, cls] = STATUS[r[3]]; return [`<code>FR-${m.code}-${r[0]}</code>`, inline(r[1]), PRIORITY[r[2]], chip(label, cls), esc(r[4])]; });
+  return `<div class="module">${h2(m.name, m.goal)}<p class="meta">Prefix <code>FR-${m.code}</code> · ${mDel} of ${mTotal} built</p>${table(['ID', 'Requirement', 'Priority', 'Status', 'Acceptance criteria'], rows, 'req', ['12%', '42%', '8%', '10%', '28%'])}${detailHtml(m.code)}</div>`;
 }).join('');
 sections.push(`<section>${h1('Functional requirements')}
-<p>Each requirement has an identifier, a priority (Must, Should, Could, Won't), a status (Delivered, Partial, Planned), the release that delivers it, and an acceptance criterion a tester can verify. "Delivered" means present and verified in the current build.</p>
+<p>Each requirement has an identifier, a priority (Must, Should, Could, Won't), a status (Built, Partial, Planned) and an acceptance criterion a tester can verify. "Built" means present and verified in the current product. Modules not yet built carry a detailed specification after their table; mobile requirements follow the last module.</p>
 ${moduleSections()}
+<div class="module">${h2('Mobile experience', 'Daily work must be possible from a phone. Requirements are in addition to the responsive behaviour already built.')}${detailHtml('MOB').replace(/<h3>Detailed specification: [^<]*<\/h3><p>[^<]*<\/p>/, '')}</div>
 </section>`);
-
+/* 7 */
+sections.push(`<section>${h1('Business rules and behaviour')}
+<p>These rules apply across modules. Where a module requirement and a rule seem to differ, the rule wins and the requirement must be corrected.</p>
+${h2('Business rules and limits')}
+${table(['ID', 'Rule', 'Enforced'], C_SPEC.businessRules.map((r) => [`<code>${r[0]}</code>`, esc(r[1]), esc(r[2])]), 'compact', ['9%', '78%', '13%'])}
+${h2('State machines')}
+${C_SPEC.stateMachines.map((s) => `<h3>${esc(s.name)}</h3><p class="small">${esc(s.note)}</p>${table(['From', 'Event', 'To', 'Rule'], s.rows.map((r) => r.map((c) => esc(c))), 'compact', ['16%', '24%', '22%', '38%'])}`).join('')}
+${h2('Notification rules', 'No one is notified of their own action. In-app notifications are immediate; email is batched into one digest per person after two minutes and skipped when the person has switched email off.')}
+${table(['Event', 'Recipients', 'In app', 'Email'], C_SPEC.notificationRules.map((r) => r.map((c) => esc(c))), 'compact', ['34%', '34%', '14%', '18%'])}
+${h2('Interface conventions')}
+${list(C.apiPrinciples)}
+</section>`);
+/* 8 */
 sections.push(`<section>${h1('Non-functional requirements')}
 <p>Targets are the commitments; the third column records what is actually evidenced today, so nothing is claimed that has not been measured.</p>
-${table(['Area', 'Requirement', 'Evidence today', 'State'], C.nfrs.map((n) => [`<b>${esc(n[0])}</b>`, esc(n[1]), esc(n[2]), chip(n[3], /Verified$/.test(n[3]) && !/Partly/.test(n[3]) ? 'st-d' : /Partly/.test(n[3]) ? 'st-p' : 'st-n')]), 'compact', ['13%', '33%', '42%', '12%'])}
+${table(['Area', 'Requirement', 'Evidence today', 'State'], C.nfrs.map((n) => [`<b>${esc(n[0])}</b>`, esc(n[1]), esc(n[2]), chip(n[3], /Verified$/.test(n[3]) && !/Partly/.test(n[3]) ? 'st-d' : /Partly/.test(n[3]) ? 'st-p' : 'st-n')]), 'compact', ['13%', '33%', '38%', '16%'])}
 </section>`);
-
-sections.push(`<section>${h1('Architecture and data')}
+/* 9 */
+const apiHtml = Object.entries(apiGroups).map(([k, label]) => { const rows = apiRoutes.filter((r) => r[0] === k); return rows.length ? `<h3>${esc(label)}</h3>${table(['Method', 'Path', 'Needs'], rows.map((r) => [`<code>${r[1]}</code>`, `<code>${esc(r[2])}</code>`, esc(r[3])]), 'compact api', ['12%', '66%', '22%'])}` : ''; }).join('');
+sections.push(`<section>${h1('Architecture, data and API')}
 ${h2('System context', 'Solid boxes exist today; dashed boxes are planned.')}
 ${architectureSvg}
 ${h2('Technology')}
@@ -221,24 +241,34 @@ ${table(['Layer', 'Choice'], C.stack.map((s) => [`<b>${esc(s[0])}</b>`, esc(s[1]
 ${h2('Data model', 'Main entities and how they relate.')}
 ${dataModelSvg}
 <p class="small"><b>Entities:</b> ${C.entities.join(' · ')}.</p>
-${h2('API and engineering principles')}
-${list(C.apiPrinciples)}
+${h2('Data dictionary', `Generated from the database migrations, so it matches the product exactly: ${dataDictionary.size} tables. Types are PostgreSQL types; "→" marks a foreign key and its delete behaviour.`)}
+<div class="dd-grid">${ddHtml}</div>
+${h2('Tables to add', 'Needed by the modules not yet built. Names and columns are the starting design; keep migrations forward-only.')}
+${table(['Table', 'Purpose', 'Key columns'], C_SPEC.plannedTables.map((r) => [`<code>${esc(r[0])}</code>`, esc(r[1]), esc(r[2])]), 'compact', ['24%', '24%', '52%'])}
+${h2('API reference', `The ${apiRoutes.length} endpoints in the current product, read from the code. "Needs" is the lowest workspace role allowed; write endpoints also require a same-origin JSON request. Unknown or forbidden resources return 404.`)}
+${apiHtml}
 </section>`);
-
+/* 10 */
 sections.push(`<section>${h1('User experience')}
 ${h2('Principles')}
 ${table(['Principle', 'In practice'], C.uxPrinciples.map((p) => [`<b>${esc(p[0])}</b>`, esc(p[1])]), 'compact', ['22%', '78%'])}
+${h2('Screen inventory', 'Every screen must design and test the listed states in addition to its normal state.')}
+${table(['Screen', 'Route', 'Purpose and main elements', 'States to design'], C_SPEC.screens.map((r) => [`<b>${esc(r[0])}</b>`, `<code>${esc(r[1])}</code>`, esc(r[2]), esc(r[3])]), 'compact', ['15%', '20%', '40%', '25%'])}
+${h2('Interface standards')}
+${list(C_SPEC.uiStandards)}
 ${h2('Key user journeys')}
 ${table(['Journey', 'Steps', 'Success measure'], C.journeys.map((j) => [`<b>${esc(j[0])}</b>`, esc(j[1]), esc(j[2])]), 'compact', ['16%', '54%', '30%'])}
 </section>`);
-
-sections.push(`<section>${h1('Quality and release criteria')}
+/* 11 */
+sections.push(`<section>${h1('Quality and acceptance')}
 ${h2('Test strategy')}
 ${table(['Layer', 'What it covers', 'When'], C.qa.map((q) => [`<b>${esc(q[0])}</b>`, esc(q[1]), esc(q[2])]), 'compact', ['20%', '60%', '20%'])}
+${h2('Acceptance scenarios', 'End-to-end scenarios that must pass. Scenarios marked "Planned" apply when their module is built.')}
+${table(['ID', 'Scenario', 'Expected result'], C_SPEC.testScenarios.map((r) => [`<code>${r[0]}</code>`, esc(r[1]), esc(r[2])]), 'compact', ['8%', '56%', '36%'])}
 ${h2('Definition of done')}
 ${list(C.dod)}
 </section>`);
-
+/* 12 */
 sections.push(`<section class="tight">${h1('Risks, assumptions and open questions')}
 ${h2('Risks')}
 ${table(['Risk', 'Impact', 'Mitigation'], C.risks.map((r) => [esc(r[0]), `<b>${esc(r[1])}</b>`, esc(r[2])]), 'compact', ['42%', '10%', '48%'])}
@@ -249,23 +279,22 @@ ${list(C.dependencies)}
 ${h2('Open questions for the product owner')}
 ${list(C.openQuestions)}
 </section>`);
-
 /* appendices */
 const modRows = C.modules.map((m) => {
   const n = m.rows.length; const d = m.rows.filter((r) => r[3] === 'D').length; const p = m.rows.filter((r) => r[3] === 'P').length;
   return `<div class="bar-row"><span class="bar-label wide">${esc(m.name)}</span><span class="bar-track"><span class="bar-fill" style="width:${(d / n) * 100}%;background:#86BC25"></span><span class="bar-fill" style="width:${(p / n) * 100}%;background:#f5b942"></span></span><span class="bar-val">${d}/${n}</span></div>`;
 }).join('');
 const trace = [
-  ['BR-01', 'TSK, PRJ, VWS, RPT'], ['BR-02', 'TSK, REL, FLD, VWS, SPR, COL, AUTO, INT, RPT'], ['BR-03', 'VWS, SRC, TSK (performance and keyboard requirements)'],
-  ['BR-04', 'AUT, WSP, ADM'], ['BR-05', 'Section 7 (maintainability), section 8 (single service and database)'], ['BR-06', 'Section 7 (accessibility), VWS-02, SPR-06'],
+  ['BR-01', 'TSK, PRJ, VWS, RPT, TIM'], ['BR-02', 'TSK, REL, FLD, VWS, SPR, COL, NTF, AUTO, INT, RPT, DOC, TIM'], ['BR-03', 'VWS, SRC, TSK, section 8 (performance and usability)'],
+  ['BR-04', 'AUT, WSP, ADM, section 8 (security)'], ['BR-05', 'Section 8 (maintainability), section 9 (single service and database)'], ['BR-06', 'Section 8 (accessibility), section 10 (interface standards)'],
   ['BR-07', 'IMP'], ['BR-08', 'INT, AUTO, NTF'], ['BR-09', 'IMP-02, VWS-06'],
 ];
 sections.push(`<section>${h1('Requirement status summary', { appendix: true, letter: 'A' })}
-<p>${total} requirements across ${C.modules.length} modules: <b>${delivered} delivered</b> (${pct(delivered)}%), <b>${partial} partial</b>, <b>${planned} planned</b> (${pct(planned)}%).</p>
+<p>${total} requirements across ${C.modules.length} modules: <b>${delivered} built</b> (${pct(delivered)}%), <b>${partial} partial</b>, <b>${planned} planned</b> (${pct(planned)}%).</p>
 <div class="bars">${modRows}</div>
-<p class="legend"><span class="swatch" style="background:#86BC25"></span> Delivered &nbsp; <span class="swatch" style="background:#f5b942"></span> Partial &nbsp; <span class="swatch" style="background:#e4e8f1"></span> Planned</p>
+<p class="legend"><span class="swatch" style="background:#86BC25"></span> Built &nbsp; <span class="swatch" style="background:#f5b942"></span> Partial &nbsp; <span class="swatch" style="background:#e4e8f1"></span> Planned</p>
 ${h1('Traceability from business requirements', { appendix: true, letter: 'B' })}
-${table(['Business requirement', 'Delivered through'], trace.map((t) => [`<code>${t[0]}</code>`, esc(t[1])]), 'compact', ['22%', '78%'])}
+${table(['Business requirement', 'Covered by'], trace.map((t) => [`<code>${t[0]}</code>`, esc(t[1])]), 'compact', ['22%', '78%'])}
 ${h1('Keyboard shortcuts', { appendix: true, letter: 'C' })}
 ${table(['Keys', 'Action'], C.shortcuts.map((s) => [`<code>${esc(s[0])}</code>`, esc(s[1])]), 'compact', ['30%', '70%'])}
 ${h1('Glossary', { appendix: true, letter: 'D' })}
@@ -280,17 +309,17 @@ ${table(['Item', 'Detail'], [
   ['Product owner', '<span class="blank"></span>'], ['Audience', 'Product owner, sponsors, engineering, design, QA, security and operations'],
 ], 'compact kv', ['26%', '74%'])}
 <h3>Revision history</h3>
-${table(['Version', 'Date', 'Author', 'Change'], [[C.doc.version, C.doc.date, 'Product', 'First complete draft: business context, competitive analysis, requirements, release plan']], 'compact', ['12%', '20%', '18%', '50%'])}
+${table(['Version', 'Date', 'Author', 'Change'], [['1.0', '24 November 2026', 'Product', 'First draft'], [C.doc.version, C.doc.date, 'Product', 'Rewritten for developers: capability list, detailed specifications, business rules, data dictionary, API reference, screens and test scenarios.']], 'compact', ['12%', '20%', '18%', '50%'])}
 <h3>Approvals</h3>
 ${table(['Role', 'Name', 'Signature', 'Date'], ['Product owner', 'Engineering lead', 'Security lead', 'Sponsor'].map((r) => [r, '<span class="blank"></span>', '<span class="blank"></span>', '<span class="blank"></span>']), 'compact sign', ['25%', '30%', '30%', '15%'])}
 <div class="notice-box"><h2>Restricted use</h2><p><b>This document must not be used for research purposes.</b> It is provided solely for reviewing, approving and delivering the Cortex Tracker product. It must not be used for research, benchmarking, academic or market study, training data, publication or any other purpose.</p><p>It contains confidential information. Do not copy, quote or distribute it beyond the named audience without written permission from the document owner.</p></div>
 <h3>How to read this document</h3>
 <div class="legend-grid">
-  <div><b>Status</b><br>${chip('Delivered', 'st-d')} present and verified in the current build<br>${chip('Partial', 'st-p')} present with a known limitation<br>${chip('Planned', 'st-n')} not built yet</div>
-  <div><b>Priority</b><br><b>Must</b> required for the release to be useful<br><b>Should</b> important, not blocking<br><b>Could</b> valuable if capacity allows<br><b>Won't</b> excluded from this horizon</div>
-  <div><b>Release</b><br>R1 current build · R1.1 brand alignment<br>R2 automate and connect · R3 scale and secure<br>R4 insight and collaboration · R5 intelligence</div>
+  <div><b>Status</b><br>${chip('Built', 'st-d')} in the product now and tested<br>${chip('Partial', 'st-p')} present with a known limitation<br>${chip('Planned', 'st-n')} not built yet</div>
+  <div><b>Priority</b><br><b>Must</b> the product is not useful without it<br><b>Should</b> important, not blocking<br><b>Could</b> valuable if capacity allows<br><b>Won't</b> excluded from this horizon</div>
+  <div><b>Where to look</b><br>Capabilities: section 3<br>Requirements: section 6<br>Rules: section 7<br>Data and API: section 9</div>
 </div>
-<p class="note">Basis of this document: requirement statuses reflect the product's source code and automated tests as of ${esc(C.doc.date)}. Targets, dates and competitor comparisons are proposals or high-level observations and are marked as such.</p>
+<p class="note">Basis of this document: requirement statuses reflect the product's source code and automated tests as of ${esc(C.doc.date)}. Targets are proposals for the product owner to confirm.</p>
 </section>`;
 
 const tocPlaceholder = '__TOC__';
@@ -299,7 +328,7 @@ const renderToc = (pages) => `<section class="toc"><h1 class="plain">Contents</h
 const logoFile = ['svg', 'png'].map((e) => path.join(__dirname, '..', 'frd', 'assets', `deloitte-logo.${e}`)).find((f) => fs.existsSync(f));
 const logoHtml = logoFile ? `<img alt="Deloitte" src="data:${logoFile.endsWith('svg') ? 'image/svg+xml' : 'image/png'};base64,${fs.readFileSync(logoFile).toString('base64')}">` : '<div class="logo-ph"><b>[ Deloitte logo ]</b>Official artwork to be placed here<br>(docs/frd/assets/deloitte-logo.svg)</div>';
 const cover = `<section class="cover" style="break-before:auto"><div class="band"></div><div class="cover-in"><div class="logo-slot">${logoHtml}</div>
-<div><p class="eyebrow">Business and Product Requirements Document</p><h1>Cortex Tracker<span class="dot2">.</span></h1><p class="cover-sub">Requirements for a work-management platform that matches Jira, ClickUp and Asana on the capabilities teams use every day.</p></div>
+<div><p class="eyebrow">Business and Product Requirements Document</p><h1>Cortex Tracker<span class="dot2">.</span></h1><p class="cover-sub">What to build, how it must behave, and how to prove it works: a complete requirements document for a work-management product.</p></div>
 <div><div class="cover-meta"><div><span>Version</span><b>${C.doc.version}</b></div><div><span>Date</span><b>${C.doc.date}</b></div><div><span>Status</span><b>${C.doc.status}</b></div><div><span>Classification</span><b>Restricted</b></div></div>
 <p class="cover-notice"><b>Restricted use.</b> Not to be used for research purposes. Confidential.</p></div></div></section>`;
 
