@@ -53,19 +53,19 @@ const chip = (text, cls) => `<span class="chip ${cls}">${esc(text)}</span>`;
 const table = (head, rows, cls = '', widths = []) => `<table class="${cls}"><colgroup>${widths.map((w) => `<col style="width:${w}">`).join('')}</colgroup><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 const list = (items) => `<ul>${items.map((i) => `<li>${inline(i)}</li>`).join('')}</ul>`;
 const dot = (v) => `<span class="dot ${v.toLowerCase()}" title="${{ F: 'Full', P: 'Partial', N: 'Not available' }[v]}"></span>`;
-const logo = (size = 44, bg = '#14b8a6', fg = '#0f1b3d') => `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="${bg}"/><path d="M45 21a17 17 0 1 0 0 22" fill="none" stroke="${fg}" stroke-width="5.5" stroke-linecap="round"/><circle cx="43" cy="32" r="4.5" fill="${fg}"/></svg>`;
+const logo = (size = 44, bg = '#86BC25', fg = '#0f1b3d') => `<svg width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="${bg}"/><path d="M45 21a17 17 0 1 0 0 22" fill="none" stroke="${fg}" stroke-width="5.5" stroke-linecap="round"/><circle cx="43" cy="32" r="4.5" fill="${fg}"/></svg>`;
 const bar = (label, value, color, valueText) => `<div class="bar-row"><span class="bar-label">${esc(label)}</span><span class="bar-track"><span class="bar-fill" style="width:${Math.round(value * 100)}%;background:${color}"></span></span><span class="bar-val">${esc(valueText ?? `${Math.round(value * 100)}%`)}</span></div>`;
 
 /* ---------- diagrams ---------- */
-const box = (x, y, w, h, title, lines = [], { planned = false, fill = '#fff', stroke = '#1d2a5b' } = {}) => {
+const box = (x, y, w, h, title, lines = [], { planned = false, fill = '#fff', stroke = '#000000' } = {}) => {
   const dash = planned ? 'stroke-dasharray="5 4"' : '';
   const body = lines.map((l, i) => `<text x="${x + 12}" y="${y + 40 + i * 15}" class="d-small">${esc(l)}</text>`).join('');
   return `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" fill="${planned ? '#f4f6fb' : fill}" stroke="${planned ? '#8a94ad' : stroke}" stroke-width="1.5" ${dash}/><text x="${x + 12}" y="${y + 22}" class="d-title${planned ? ' planned' : ''}">${esc(title)}</text>${body}</g>`;
 };
-const arrow = (x1, y1, x2, y2, label = '') => `<g><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#14b8a6" stroke-width="2" marker-end="url(#ah)"/>${label ? `<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}" class="d-small" text-anchor="middle">${esc(label)}</text>` : ''}</g>`;
+const arrow = (x1, y1, x2, y2, label = '') => `<g><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#86BC25" stroke-width="2" marker-end="url(#ah)"/>${label ? `<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}" class="d-small" text-anchor="middle">${esc(label)}</text>` : ''}</g>`;
 
 const architectureSvg = `<svg viewBox="0 0 740 360" class="diagram" role="img" aria-label="Architecture: browser, server and database, with planned components shown dashed">
-<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#14b8a6"/></marker></defs>
+<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#86BC25"/></marker></defs>
 ${box(5, 20, 170, 150, 'Browser', ['React single-page app', 'List, board, backlog,', 'timeline, calendar, daily', 'Task panel, palette', 'Polls for changes (5 s)'])}
 ${box(270, 20, 200, 150, 'Cortex Tracker server', ['Node.js 22 + Express', 'Auth · Workspaces · Projects', 'Tasks · Collaboration · Files', 'Sprints · Custom fields', 'Email worker · Static assets'])}
 ${box(565, 20, 170, 150, 'PostgreSQL 16', ['Users, workspaces, members', 'Projects, tasks, sprints', 'Comments, activity, files', 'Notifications, saved views', 'Versioned migrations'])}
@@ -83,7 +83,7 @@ ${box(499, 290, 236, 60, 'Integrations', ['Slack, Teams, GitHub, calendar (R4)']
 </svg>`;
 
 const dataModelSvg = (() => {
-  const b = (x, y, w, t, sub = '') => `<g><rect x="${x}" y="${y}" width="${w}" height="38" rx="8" fill="#fff" stroke="#1d2a5b" stroke-width="1.4"/><text x="${x + w / 2}" y="${y + 16}" text-anchor="middle" class="d-title">${esc(t)}</text>${sub ? `<text x="${x + w / 2}" y="${y + 30}" text-anchor="middle" class="d-small">${esc(sub)}</text>` : ''}</g>`;
+  const b = (x, y, w, t, sub = '') => `<g><rect x="${x}" y="${y}" width="${w}" height="38" rx="8" fill="#fff" stroke="#000000" stroke-width="1.4"/><text x="${x + w / 2}" y="${y + 16}" text-anchor="middle" class="d-title">${esc(t)}</text>${sub ? `<text x="${x + w / 2}" y="${y + 30}" text-anchor="middle" class="d-small">${esc(sub)}</text>` : ''}</g>`;
   const l = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#8a94ad" stroke-width="1.4"/>`;
   const kids = [['Comment · Activity', 'discussion, history'], ['Attachment · Link', 'files, references'], ['Relation', 'blocks, relates, duplicates'], ['Label · Field value', 'tags, custom data'], ['Watcher · Notification', 'alerts']];
   const xs = [5, 153, 301, 449, 597];
@@ -168,7 +168,7 @@ ${h2('Where Cortex Tracker competes, and where not yet')}
 <p class="keep">Coverage score across the ${parityRows.length} capability areas (full = 1, partial = 0.5). Every area counts equally, so read it as a trend, not a verdict: the areas that matter most differ for each team.</p>
 <div class="bars">
 ${bar('Jira', score(1), '#6b7a99')}${bar('ClickUp', score(2), '#6b7a99')}${bar('Asana', score(3), '#6b7a99')}
-${bar('Cortex Tracker today (R1)', cortexAt(1), '#14b8a6')}${bar('after R2', cortexAt(2), '#14b8a6')}${bar('after R3', cortexAt(3), '#14b8a6')}${bar('after R4', cortexAt(4), '#14b8a6')}${bar('after R5', cortexAt(5), '#14b8a6')}
+${bar('Cortex Tracker today (R1)', cortexAt(1), '#86BC25')}${bar('after R2', cortexAt(2), '#86BC25')}${bar('after R3', cortexAt(3), '#86BC25')}${bar('after R4', cortexAt(4), '#86BC25')}${bar('after R5', cortexAt(5), '#86BC25')}
 </div>
 ${list([
   `**Strong today:** tasks, views, agile planning, collaboration and a self-hosted option. These cover the daily needs of most teams.`,
@@ -253,7 +253,7 @@ ${list(C.openQuestions)}
 /* appendices */
 const modRows = C.modules.map((m) => {
   const n = m.rows.length; const d = m.rows.filter((r) => r[3] === 'D').length; const p = m.rows.filter((r) => r[3] === 'P').length;
-  return `<div class="bar-row"><span class="bar-label wide">${esc(m.name)}</span><span class="bar-track"><span class="bar-fill" style="width:${(d / n) * 100}%;background:#14b8a6"></span><span class="bar-fill" style="width:${(p / n) * 100}%;background:#f5b942"></span></span><span class="bar-val">${d}/${n}</span></div>`;
+  return `<div class="bar-row"><span class="bar-label wide">${esc(m.name)}</span><span class="bar-track"><span class="bar-fill" style="width:${(d / n) * 100}%;background:#86BC25"></span><span class="bar-fill" style="width:${(p / n) * 100}%;background:#f5b942"></span></span><span class="bar-val">${d}/${n}</span></div>`;
 }).join('');
 const trace = [
   ['BR-01', 'TSK, PRJ, VWS, RPT'], ['BR-02', 'TSK, REL, FLD, VWS, SPR, COL, AUTO, INT, RPT'], ['BR-03', 'VWS, SRC, TSK (performance and keyboard requirements)'],
@@ -263,7 +263,7 @@ const trace = [
 sections.push(`<section>${h1('Requirement status summary', { appendix: true, letter: 'A' })}
 <p>${total} requirements across ${C.modules.length} modules: <b>${delivered} delivered</b> (${pct(delivered)}%), <b>${partial} partial</b>, <b>${planned} planned</b> (${pct(planned)}%).</p>
 <div class="bars">${modRows}</div>
-<p class="legend"><span class="swatch" style="background:#14b8a6"></span> Delivered &nbsp; <span class="swatch" style="background:#f5b942"></span> Partial &nbsp; <span class="swatch" style="background:#e4e8f1"></span> Planned</p>
+<p class="legend"><span class="swatch" style="background:#86BC25"></span> Delivered &nbsp; <span class="swatch" style="background:#f5b942"></span> Partial &nbsp; <span class="swatch" style="background:#e4e8f1"></span> Planned</p>
 ${h1('Traceability from business requirements', { appendix: true, letter: 'B' })}
 ${table(['Business requirement', 'Delivered through'], trace.map((t) => [`<code>${t[0]}</code>`, esc(t[1])]), 'compact', ['22%', '78%'])}
 ${h1('Keyboard shortcuts', { appendix: true, letter: 'C' })}
@@ -283,6 +283,7 @@ ${table(['Item', 'Detail'], [
 ${table(['Version', 'Date', 'Author', 'Change'], [[C.doc.version, C.doc.date, 'Product', 'First complete draft: business context, competitive analysis, requirements, release plan']], 'compact', ['12%', '20%', '18%', '50%'])}
 <h3>Approvals</h3>
 ${table(['Role', 'Name', 'Signature', 'Date'], ['Product owner', 'Engineering lead', 'Security lead', 'Sponsor'].map((r) => [r, '<span class="blank"></span>', '<span class="blank"></span>', '<span class="blank"></span>']), 'compact sign', ['25%', '30%', '30%', '15%'])}
+<div class="notice-box"><h2>Restricted use</h2><p><b>This document must not be used for research purposes.</b> It is provided solely for reviewing, approving and delivering the Cortex Tracker product. It must not be used for research, benchmarking, academic or market study, training data, publication or any other purpose.</p><p>It contains confidential information. Do not copy, quote or distribute it beyond the named audience without written permission from the document owner.</p></div>
 <h3>How to read this document</h3>
 <div class="legend-grid">
   <div><b>Status</b><br>${chip('Delivered', 'st-d')} present and verified in the current build<br>${chip('Partial', 'st-p')} present with a known limitation<br>${chip('Planned', 'st-n')} not built yet</div>
@@ -295,11 +296,12 @@ ${table(['Role', 'Name', 'Signature', 'Date'], ['Product owner', 'Engineering le
 const tocPlaceholder = '__TOC__';
 const renderToc = (pages) => `<section class="toc"><h1 class="plain">Contents</h1><div class="toc-cols">${toc.map((e) => `<div class="toc-row l${e.level}"><span class="t">${esc(e.text)}</span><span class="dots"></span><span class="p">${pages ? (pages.get(e.text) ?? '') : '00'}</span></div>`).join('')}</div></section>`;
 
-const cover = `<section class="cover"><div class="cover-in">
-<div class="brand">${logo(58)}<span>Cortex Tracker</span></div>
-<div class="cover-mid"><p class="eyebrow">Business and Product Requirements Document</p><h1>Work management that<br>stays out of the way</h1><p class="cover-sub">Requirements for a platform that matches Jira, ClickUp and Asana on the capabilities teams use every day.</p></div>
-<div class="cover-meta"><div><span>Version</span><b>${C.doc.version}</b></div><div><span>Date</span><b>${C.doc.date}</b></div><div><span>Status</span><b>${C.doc.status}</b></div><div><span>Classification</span><b>Confidential</b></div></div>
-</div></section>`;
+const logoFile = ['svg', 'png'].map((e) => path.join(__dirname, '..', 'frd', 'assets', `deloitte-logo.${e}`)).find((f) => fs.existsSync(f));
+const logoHtml = logoFile ? `<img alt="Deloitte" src="data:${logoFile.endsWith('svg') ? 'image/svg+xml' : 'image/png'};base64,${fs.readFileSync(logoFile).toString('base64')}">` : '<div class="logo-ph"><b>[ Deloitte logo ]</b>Official artwork to be placed here<br>(docs/frd/assets/deloitte-logo.svg)</div>';
+const cover = `<section class="cover" style="break-before:auto"><div class="band"></div><div class="cover-in"><div class="logo-slot">${logoHtml}</div>
+<div><p class="eyebrow">Business and Product Requirements Document</p><h1>Cortex Tracker<span class="dot2">.</span></h1><p class="cover-sub">Requirements for a work-management platform that matches Jira, ClickUp and Asana on the capabilities teams use every day.</p></div>
+<div><div class="cover-meta"><div><span>Version</span><b>${C.doc.version}</b></div><div><span>Date</span><b>${C.doc.date}</b></div><div><span>Status</span><b>${C.doc.status}</b></div><div><span>Classification</span><b>Restricted</b></div></div>
+<p class="cover-notice"><b>Restricted use.</b> Not to be used for research purposes. Confidential.</p></div></div></section>`;
 
 const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 const buildHtml = (pages) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Cortex Tracker: Business and Product Requirements Document</title><style>${css}</style></head><body>${cover}${frontMatter}${renderToc(pages)}${sections.join('\n')}</body></html>`;
